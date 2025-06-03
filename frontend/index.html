@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+	<html>
+	<head>
+		<title>Video Stream</title>
+		<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+		<style>
+			body, html {
+				margin: 0;
+				padding: 0;
+				width: 100%;
+				height: 100%;
+				overflow: hidden;
+				background: black;
+			}
+			#video-container {
+				width: 100%;
+				height: 100vh;
+				position: relative;
+			}
+			#video {
+				width: 100%;
+				height: 100%;
+				object-fit: contain;
+			}
+			.quality-dropdown {
+				position: absolute;
+				top: 10px;
+				right: 10px;
+				z-index: 1000;
+				display: none;
+			}
+			.quality-button {
+				background: rgba(0, 0, 0, 0.7);
+				color: white;
+				padding: 6px 12px;
+				border-radius: 4px;
+				border: 1px solid rgba(255, 255, 255, 0.3);
+				cursor: pointer;
+				display: flex;
+				align-items: center;
+				gap: 6px;
+				font-size: 13px;
+				transition: background-color 0.2s;
+				min-width: 80px;
+			}
+			.quality-button:hover {
+				background: rgba(0, 0, 0, 0.8);
+			}
+			.quality-button::after {
+				content: '';
+				width: 0;
+				height: 0;
+				border-left: 5px solid transparent;
+				border-right: 5px solid transparent;
+				border-top: 5px solid white;
+				transition: transform 0.2s;
+			}
+			.quality-dropdown.active .quality-button::after {
+				transform: rotate(180deg);
+			}
+			.quality-menu {
+				position: absolute;
+				top: 100%;
+				right: 0;
+				margin-top: 4px;
+				background: rgba(0, 0, 0, 0.9);
+				border: 1px solid rgba(255, 255, 255, 0.3);
+				border-radius: 4px;
+				min-width: 120px;
+				display: none;
+				box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+			}
+			.quality-dropdown.active .quality-menu {
+				display: block;
+			}
+			.quality-option {
+				padding: 6px 12px;
+				color: white;
+				cursor: pointer;
+				transition: background-color 0.2s;
+				display: flex;
+				align-items: center;
+				justify-content: space-between;
+				font-size: 13px;
+				white-space: nowrap;
+			}
+			.quality-option:hover {
+				background: rgba(255, 255, 255, 0.1);
+			}
+			.quality-option.active {
+				background: rgba(255, 255, 255, 0.15);
+			}
+			.quality-option .quality-label {
+				font-size: 13px;
+				margin-right: 8px;
+			}
+			.quality-option .quality-details {
+				font-size: 11px;
+				opacity: 0.7;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="video-container">
+			<video id="video" controls autoplay muted playsinline></video>
+			<div class="quality-dropdown" id="quality-dropdown">
+				<button class="quality-button" id="quality-button">Quality</button>
+				<div class="quality-menu" id="quality-menu"></div>
+			</div>
+		</div>
+
+		<script>
+			//const source = '/user/test/prog_index.m3u8';
+			//const source = '/premium/wolmain/master.m3u8';
+			const source = '/video/test/master.m3u8';
+
+			const video = document.getElementById('video');
+			const qualityDropdown = document.getElementById('quality-dropdown');
+			const qualityButton = document.getElementById('quality-button');
+			const qualityMenu = document.getElementById('quality-menu');
+			
+			// Handle dropdown toggle
+			qualityButton.addEventListener('click', () => {
+				qualityDropdown.classList.toggle('active');
+			});
+
+			// Close dropdown when clicking outside
+			document.addEventListener('click', (e) => {
+				if (!qualityDropdown.contains(e.target)) {
+					qualityDropdown.classList.remove('active');
+				}
+			});
+			
+			async function initPlayer() {
+				try {
+					if (Hls.isSupported()) {
+						const hls = new Hls({
+							enableWorker: true,
+							backBufferLength: 90,
+							maxBufferLength: 30,
+							maxMaxBufferLength: 600,
+							maxBufferSize: 60 * 1000 * 1000, // 60MB
+							maxBufferHole: 0.5,
+							highBufferWatchdogPeriod: 2,
+							nudgeMaxRetry: 5,
+							nudgeOffset: 0.1,
+							startFragPrefetch: true,
+							testBandwidth: true,
+							progressive: true,
+							lowLatencyMode: true,
+							backBufferLength: 90
+						});
+						
+						hls.loadSource(source);
+						hls.attachMedia(video);
+						
+						hls.on(Hls.Events.MANIFEST_PARSED, (event, data) => {
+							console.log('Manifest parsed, attempting autoplay...');
+							
+							// Populate quality selector
+							const levels = data.levels;
+							if (levels && levels.length > 1) {
+								qualityDropdown.style.display = 'block';
+								qualityMenu.innerHTML = levels.map((level, index) => {
+									const quality = level.url[0].split('/').slice(-2, -1)[0] || "Default";
+									return `
+										<div class="quality-option" data-level="${index}">
+											<span class="quality-label">${quality}</span>
+											<span class="quality-details">${level.height}p${level.frameRate ? ` ${level.frameRate}fps` : ''}</span>
+										</div>
+									`;
+								}).join('');
+
+								// Add click handlers for quality options
+								qualityMenu.querySelectorAll('.quality-option').forEach(option => {
+									option.addEventListener('click', () => {
+										const level = parseInt(option.dataset.level);
+										hls.currentLevel = level;
+										qualityDropdown.classList.remove('active');
+										
+										// Update active state
+										qualityMenu.querySelectorAll('.quality-option').forEach(opt => {
+											opt.classList.remove('active');
+										});
+										option.classList.add('active');
+										
+										// Update button text
+										qualityButton.textContent = option.querySelector('.quality-label').textContent;
+									});
+								});
+								
+								// Set initial quality to highest
+								hls.currentLevel = -1; // Auto quality
+							}
+
+							const playPromise = video.play();
+							if (playPromise !== undefined) {
+								playPromise.catch(error => {
+									console.log('Autoplay failed:', error);
+								});
+							}
+						});
+
+						// Update quality selector when levels change
+						hls.on(Hls.Events.LEVEL_SWITCHED, (event, data) => {
+							if (data.level !== -1) {
+								const option = qualityMenu.querySelector(`.quality-option[data-level="${data.level}"]`);
+								if (option) {
+									qualityMenu.querySelectorAll('.quality-option').forEach(opt => {
+										opt.classList.remove('active');
+									});
+									option.classList.add('active');
+									qualityButton.textContent = option.querySelector('.quality-label').textContent;
+								}
+							}
+						});
+
+						hls.on(Hls.Events.ERROR, (event, data) => {
+							console.log('HLS error:', data);
+							if (data.fatal) {
+								switch (data.type) {
+									case Hls.ErrorTypes.NETWORK_ERROR:
+										console.log('Network error, attempting to recover...');
+										hls.startLoad();
+										break;
+									case Hls.ErrorTypes.MEDIA_ERROR:
+										console.log('Media error, attempting to recover...');
+										hls.recoverMediaError();
+										break;
+									default:
+										console.log('Fatal error, stopping:', data);
+										hls.destroy();
+										break;
+								}
+							}
+						});
+					} else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+						// For Safari
+						video.src = source;
+						video.addEventListener('loadedmetadata', () => {
+							console.log('Metadata loaded, attempting autoplay...');
+							const playPromise = video.play();
+							if (playPromise !== undefined) {
+								playPromise.catch(error => {
+									console.log('Autoplay failed:', error);
+								});
+							}
+						});
+					} else {
+						document.body.innerHTML = "HLS non supporté dans ce navigateur.";
+					}
+				} catch (error) {
+					console.error('Player initialization error:', error);
+				}
+			}
+
+			// Initialize the player
+			initPlayer();
+		</script>
+	</body>
+</html>

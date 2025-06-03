@@ -1,0 +1,105 @@
+application:
+  public_path: "http://localhost:8080"
+  all_streams_playlist:
+    enabled: true
+    path: "all_streams.m3u8"
+
+# Server's ports
+server:
+  http: 8080 # Used by HLS
+
+# ────────────────
+# Quality profiles
+quality_profiles: &QUALITY_PROFILES
+  low: &LOW
+    width: 640
+    height: 360
+    framerate: 24
+    bitrate: "800k"
+    codec: "libx264"
+    audio:
+      bitrate: "96k"
+      codec: "aac"
+
+  medium: &MEDIUM
+    width: 1280
+    height: 720
+    framerate: 30
+    bitrate: "2500k"
+    codec: "libx264"
+    audio:
+      bitrate: "128k"
+      codec: "aac"
+
+  high: &HIGH
+    width: 1920
+    height: 1080
+    framerate: 30
+    bitrate: "5000k"
+    codec: "libx264"
+    audio:
+      bitrate: "192k"
+      codec: "aac"
+
+# ────────────────
+# Stream templates
+stream_templates:
+  default:  # When there is not quality, then the default directory is used in the storage path
+    stream: &default_stream_config
+      type: video_encoded
+      path: "livestreams/{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6
+          playlist_length: 5
+        dash:
+          segment_duration: 6
+          manifest_window: 5
+  multiquality:
+    stream: &multiquality_stream_config
+      type: video_encoded
+      path: "livestreams/{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6
+          playlist_length: 5
+        dash:
+          segment_duration: 6
+          manifest_window: 5
+  video:
+    stream: &video_unencoded_config
+      type: video_unencoded
+      video_input_path: "raw_videos/{username}"
+      path: "records/{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6
+          playlist_length: 5
+        dash:
+          segment_duration: 6
+          manifest_window: 5
+
+# ────────────────
+# All streams endpoints
+channels:
+  "/user/{username}":
+    stream:
+      <<: *default_stream_config
+  "/premium/{username}":
+    stream:
+      <<: *multiquality_stream_config
+  "/video/{username}":
+    stream:
+      <<: *video_unencoded_config
