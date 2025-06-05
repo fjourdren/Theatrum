@@ -51,7 +51,7 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		// Create a subrouter for this channel
 		channelRouter := r.PathPrefix(path).Subrouter()
 		// Create the stream handler
-		handler := handlers.NewStreamHandler(&channel, s.streamService)
+		handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService)
 		
 		if len(channel.Qualities) != 0 { // If there is a quality, then we need to handle quality-specific paths
 			// Handle quality-specific paths
