@@ -53,7 +53,6 @@ func TestFfmpegEncoder_EncodeVideo(t *testing.T) {
 			distribution: models.Distribution{
 				Hls: models.Hls{
 					SegmentDuration: 10,
-					PlaylistLength:  5,
 				},
 			},
 			expectedError: false,

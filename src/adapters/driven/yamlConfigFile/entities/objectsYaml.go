@@ -50,7 +50,8 @@ type Stream struct {
 	Distribution Distribution       `yaml:"distribution"`
 
 	// Specific fields for video unencoded streams
-	VideoInputPath string `yaml:"video_input_path"`
+	VideoInputPath      string `yaml:"video_input_path"`
+	DeleteAfterEncoding bool   `yaml:"delete_after_encoding,omitempty"` // If enabled, delete the source file after video encoding (default: false)
 }
 
 type StreamTemplate struct {

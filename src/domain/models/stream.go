@@ -21,7 +21,8 @@ type Stream struct {
 	Distribution Distribution
 
 	// Specific fields for video unencoded streams
-	VideoInputPath string
+	VideoInputPath      string
+	DeleteAfterEncoding bool // If enabled, delete the source file after video encoding (default: false)
 }
 
 func (s *Stream) GetMasterPlaylistTemplatePath() string {

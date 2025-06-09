@@ -3,6 +3,7 @@ package repositories
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -107,6 +108,126 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 
 	if stream.Path == "" {
 		return fmt.Errorf("%s has empty path", context)
+	}
+
+	// Validate path security
+	if err := y.validatePath(stream.Path, fmt.Sprintf("%s path", context)); err != nil {
+		return err
+	}
+
+	// Validate video_unencoded specific fields
+	if stream.Type == string(models.StreamTypeVideoUnEncoded) {
+		if stream.VideoInputPath == "" {
+			return fmt.Errorf("%s of type video_unencoded must have video_input_path", context)
+		}
+		
+		// Validate video input path security  
+		if err := y.validatePath(stream.VideoInputPath, fmt.Sprintf("%s video_input_path", context)); err != nil {
+			return err
+		}
+		
+		// delete_after_encoding is valid for video_unencoded streams (no validation needed, bool defaults to false)
+	} else {
+		// For video_encoded streams, these fields should not be set
+		if stream.VideoInputPath != "" {
+			return fmt.Errorf("%s of type video_encoded should not have video_input_path", context)
+		}
+		if stream.DeleteAfterEncoding {
+			return fmt.Errorf("%s of type video_encoded should not have delete_after_encoding enabled", context)
+		}
+	}
+
+	// Validate qualities
+	if len(stream.Qualities) == 0 {
+		return fmt.Errorf("%s has no quality profiles defined", context)
+	}
+
+	for qualityName, quality := range stream.Qualities {
+		if err := y.validateQuality(quality, fmt.Sprintf("%s quality '%s'", context, qualityName)); err != nil {
+			return err
+		}
+	}
+
+	// Validate distribution settings
+	if err := y.validateDistribution(stream.Distribution, stream.Type, context); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (y *YamlConfigFile) validateQuality(quality yamlConfigFileEntities.Quality, context string) error {
+	if quality.Width <= 0 {
+		return fmt.Errorf("%s has invalid width: must be greater than 0", context)
+	}
+	
+	if quality.Height <= 0 {
+		return fmt.Errorf("%s has invalid height: must be greater than 0", context)
+	}
+	
+	if quality.Framerate <= 0 {
+		return fmt.Errorf("%s has invalid framerate: must be greater than 0", context)
+	}
+	
+	if quality.Bitrate == "" {
+		return fmt.Errorf("%s has empty bitrate", context)
+	}
+	
+	if quality.Codec == "" {
+		return fmt.Errorf("%s has empty codec", context)
+	}
+	
+	// Validate audio settings
+	if quality.Audio.Bitrate == "" {
+		return fmt.Errorf("%s has empty audio bitrate", context)
+	}
+	
+	if quality.Audio.Codec == "" {
+		return fmt.Errorf("%s has empty audio codec", context)
+	}
+	
+	return nil
+}
+
+func (y *YamlConfigFile) validateDistribution(distribution yamlConfigFileEntities.Distribution, streamType string, context string) error {
+	// Validate HLS settings
+	if distribution.Hls.SegmentDuration <= 0 {
+		return fmt.Errorf("%s has invalid HLS segment_duration: must be greater than 0", context)
+	}
+
+	return nil
+}
+
+func (y *YamlConfigFile) validatePath(path string, context string) error {
+	// Check for path traversal attempts
+	if strings.Contains(path, "..") {
+		return fmt.Errorf("%s cannot contain '..' (path traversal attempt)", context)
+	}
+
+	// Check for absolute paths (should be relative)
+	if strings.HasPrefix(path, "/") || strings.HasPrefix(path, "\\") {
+		return fmt.Errorf("%s should be a relative path, not absolute", context)
+	}
+
+	// Check for Windows drive paths
+	if len(path) >= 2 && path[1] == ':' {
+		return fmt.Errorf("%s should not contain Windows drive letters", context)
+	}
+
+	// Check for empty segments
+	segments := strings.Split(path, "/")
+	for _, seg := range segments {
+		if seg == "" {
+			return fmt.Errorf("%s cannot contain empty segments", context)
+		}
+	}
+
+	// Check for potentially dangerous characters
+	dangerousChars := []string{"%00", "%2e", "%2f", "%5c", "|", ">", "<", "*", "?"}
+	for _, char := range dangerousChars {
+		if strings.Contains(path, char) {
+			return fmt.Errorf("%s contains potentially dangerous character: %s", context, char)
+		}
 	}
 
 	return nil

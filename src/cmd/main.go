@@ -55,8 +55,8 @@ func main() {
 	container.Provide(services.NewEncodeService)
 
 	// Provide job queue
-	container.Provide(func(encodeService *services.EncodeService) *jobs.EncodeJobQueue {
-		return jobs.NewEncodeJobQueue(encodeService)
+	container.Provide(func(encodeService *services.EncodeService, storage repositories.StoragePort) *jobs.EncodeJobQueue {
+		return jobs.NewEncodeJobQueue(encodeService, storage)
 	})
 
 	// Provide video detector

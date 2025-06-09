@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"Theatrum/domain/models"
+	"Theatrum/domain/repositories"
 	"Theatrum/domain/services"
 )
 
@@ -20,18 +21,20 @@ type EncodeJob struct {
 // EncodeJobQueue manages the queue of encoding jobs
 type EncodeJobQueue struct {
 	jobs            chan EncodeJob
-	encodeService *services.EncodeService
+	encodeService   *services.EncodeService
+	storage         repositories.StoragePort
 	wg              sync.WaitGroup
 	ctx             context.Context
 	cancel          context.CancelFunc
 }
 
 // NewEncodeJobQueue creates a new encode job queue
-func NewEncodeJobQueue(encodeService *services.EncodeService) *EncodeJobQueue {
+func NewEncodeJobQueue(encodeService *services.EncodeService, storage repositories.StoragePort) *EncodeJobQueue {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EncodeJobQueue{
 		jobs:            make(chan EncodeJob, 100), // Buffer size of 100 jobs
-		encodeService: encodeService,
+		encodeService:   encodeService,
+		storage:         storage,
 		ctx:             ctx,
 		cancel:          cancel,
 	}
@@ -102,4 +105,14 @@ func (q *EncodeJobQueue) processJob(job EncodeJob) {
 	log.Printf("Successfully encoded video: %s (took %v)", 
 		job.InputStoragePath, 
 		duration.Round(time.Second))
+
+	// Delete source file if enabled for video_unencoded streams
+	if job.Channel.Type == models.StreamTypeVideoUnEncoded && job.Channel.DeleteAfterEncoding {
+		log.Printf("Deleting source file after successful encoding: %s", job.InputStoragePath)
+		if err := q.storage.DeleteFile(job.InputStoragePath); err != nil {
+			log.Printf("Error deleting source file %s: %v", job.InputStoragePath, err)
+		} else {
+			log.Printf("Successfully deleted source file: %s", job.InputStoragePath)
+		}
+	}
 }

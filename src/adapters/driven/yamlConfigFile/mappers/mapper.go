@@ -38,9 +38,15 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		Type:      models.StreamType(stream.Type),
 		Path:      stream.Path,
 		Qualities: qualities,
+		Distribution: models.Distribution{
+			Hls: models.Hls{
+				SegmentDuration: stream.Distribution.Hls.SegmentDuration,
+			},
+		},
 
 		// Specific fields for video unencoded streams
-		VideoInputPath: stream.VideoInputPath,
+		VideoInputPath:      stream.VideoInputPath,
+		DeleteAfterEncoding: stream.DeleteAfterEncoding,
 	}
 }
 

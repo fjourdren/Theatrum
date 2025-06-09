@@ -10,6 +10,7 @@ A powerful and flexible streaming server that supports video on demand (VOD) wit
 - 📺 **Video on Demand**
   - Support for pre-encoded video streaming
   - Automatic mp4 encoding
+  - Optional source file deletion after encoding
 
 - 🎯 **Quality Profiles**
   - Multi-qualities management
@@ -17,7 +18,7 @@ A powerful and flexible streaming server that supports video on demand (VOD) wit
 
 - 🔄 **Streaming Protocols**
   - HLS (HTTP Live Streaming)
-  - Configurable segment duration and playlist length
+  - Configurable segment duration
 
 - ⚙️ **Configuration**
   - Fully configurable through YAML
@@ -70,10 +71,6 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
-          playlist_length: 5
-        dash:
-          segment_duration: 6
-          manifest_window: 5
 ```
 
 #### unencoded_video
@@ -84,6 +81,7 @@ stream_templates:
       type: video_unencoded
       video_input_path: "raw_videos/{username}"
       path: "records/{username}"
+      delete_after_encoding: true
       qualities:
         low: *LOW
         medium: *MEDIUM
@@ -91,26 +89,31 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
-          playlist_length: 5
         dash:
           segment_duration: 6
           manifest_window: 5
 ```
 
+### Source File Management (video_unencoded only)
+For `video_unencoded` streams, you can configure automatic deletion of source files after successful encoding:
+
+```yaml
+delete_after_encoding: false  # Default: false
+```
+
+- When set to `true`, the original video file will be automatically deleted after successful encoding
+- This helps save storage space for large video files
+- Only applies to `video_unencoded` stream types
+- Deletion only occurs after successful encoding - if encoding fails, the source file is preserved
 
 ### Stream Distribution
 HLS configuration includes:
 - Segment duration: 6 seconds
-- Playlist window: 5 segments
 
 ```yaml
 distribution:
   hls:
     segment_duration: 6
-    playlist_length: 5
-  dash:
-    segment_duration: 6
-    manifest_window: 5
 ```
 
 ### Channel Endpoints
@@ -203,7 +206,6 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 4
-          playlist_length: 6
 ```
 
 ## License

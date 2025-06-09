@@ -55,10 +55,6 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
-          playlist_length: 5
-        dash:
-          segment_duration: 6
-          manifest_window: 5
   multiquality:
     stream: &multiquality_stream_config
       type: video_encoded
@@ -70,15 +66,12 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
-          playlist_length: 5
-        dash:
-          segment_duration: 6
-          manifest_window: 5
   video:
     stream: &video_unencoded_config
       type: video_unencoded
       video_input_path: "raw_videos/{username}"
       path: "records/{username}"
+      delete_after_encoding: false
       qualities:
         low: *LOW
         medium: *MEDIUM
@@ -86,10 +79,6 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
-          playlist_length: 5
-        dash:
-          segment_duration: 6
-          manifest_window: 5
 
 # ────────────────
 # All streams endpoints
