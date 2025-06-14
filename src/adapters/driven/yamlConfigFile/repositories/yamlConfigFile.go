@@ -65,6 +65,10 @@ func (y *YamlConfigFile) validateConfig(config *yamlConfigFileEntities.Config) e
 		return fmt.Errorf("invalid HTTP port: must be greater than 0")
 	}
 
+	if config.Server.RTMPPort <= 0 {
+		return fmt.Errorf("invalid RTMP port: must be greater than 0")
+	}
+
 	// Validate stream templates after inheritance resolution
 	for name, template := range config.StreamTemplates {
 		// Check that name never = "/"

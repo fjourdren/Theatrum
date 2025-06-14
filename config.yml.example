@@ -6,7 +6,8 @@ application:
 
 # Server's ports
 server:
-  http: 8080 # Used by HLS
+  http: 8080 # Also used by HLS
+  rtmp: 1935
 
 # ────────────────
 # Quality profiles

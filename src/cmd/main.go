@@ -11,10 +11,11 @@ import (
 	ffmpegEncoderRepository "Theatrum/adapters/driven/ffmpegEncoder/repositories"
 	fileAccessRepository "Theatrum/adapters/driven/fileAccess/repositories"
 	yamlConfigFileRepository "Theatrum/adapters/driven/yamlConfigFile/repositories"
+	httpAdapter "Theatrum/adapters/driver/http"
+	"Theatrum/adapters/driver/ports"
 	"Theatrum/domain/jobs"
 	"Theatrum/domain/repositories"
 	"Theatrum/domain/services"
-	"Theatrum/servers"
 
 	"go.uber.org/dig"
 )
@@ -69,12 +70,18 @@ func main() {
 		return jobs.NewVideoUnencodedDetector(appService, encodeQueue, storage, templateService)
 	})
 
+	// Provide HTTP server
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService) ports.HttpPort {
+		return httpAdapter.NewHttpServer(appService, streamService)
+	})
+
 	// Start the application and jobs
 	err := container.Invoke(func(
 		appService *services.ApplicationService,
 		streamService *services.StreamService,
 		encodeQueue *jobs.EncodeJobQueue,
 		videoDetector *jobs.VideoUnencodedDetector,
+		httpServer ports.HttpPort,
 	) {
 		// Start the encode queue
 		encodeQueue.Start()
@@ -91,9 +98,6 @@ func main() {
 		}()
 
 		// Start HTTP server
-		httpServer := servers.NewHttpServer(appService, streamService)
-		
-		// Create a channel to listen for errors coming from the server
 		serverErrors := make(chan error, 1)
 
 		// Start the server in a goroutine

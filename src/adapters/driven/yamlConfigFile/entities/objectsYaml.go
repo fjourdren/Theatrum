@@ -19,6 +19,7 @@ type AllStreamsPlaylist struct {
 
 type Server struct {
 	HTTPPort int `yaml:"http"`
+	RTMPPort int `yaml:"rtmp"`
 }
 
 type Audio struct {

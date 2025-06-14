@@ -9,6 +9,7 @@ import (
 func ToDomainServer(server entities.Server) models.Server {
 	return models.Server{
 		HTTPPort: server.HTTPPort,
+		RTMPPort: server.RTMPPort,
 	}
 }
 
