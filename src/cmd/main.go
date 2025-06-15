@@ -13,6 +13,7 @@ import (
 	yamlConfigFileRepository "Theatrum/adapters/driven/yamlConfigFile/repositories"
 	httpAdapter "Theatrum/adapters/driver/http"
 	"Theatrum/adapters/driver/ports"
+	rtmpAdapter "Theatrum/adapters/driver/rtmp"
 	"Theatrum/domain/jobs"
 	"Theatrum/domain/repositories"
 	"Theatrum/domain/services"
@@ -75,6 +76,11 @@ func main() {
 		return httpAdapter.NewHttpServer(appService, streamService)
 	})
 
+	// Provide RTMP server
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService)
+	})
+
 	// Start the application and jobs
 	err := container.Invoke(func(
 		appService *services.ApplicationService,
@@ -82,6 +88,7 @@ func main() {
 		encodeQueue *jobs.EncodeJobQueue,
 		videoDetector *jobs.VideoUnencodedDetector,
 		httpServer ports.HttpPort,
+		rtmpServer ports.RtmpPort,
 	) {
 		// Start the encode queue
 		encodeQueue.Start()
@@ -105,6 +112,14 @@ func main() {
 			serverErrors <- httpServer.StartHttpServer()
 		}()
 
+		// Start RTMP server
+		rtmpErrors := make(chan error, 1)
+
+		// Start the RTMP server in a goroutine
+		go func() {
+			rtmpErrors <- rtmpServer.StartRtmpServer()
+		}()
+
 		// Listen for an interrupt or terminate signal from the OS
 		osSignals := make(chan os.Signal, 1)
 		signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
@@ -113,6 +128,8 @@ func main() {
 		select {
 			case err := <-serverErrors:
 				log.Printf("Error starting server: %v", err)
+			case err := <-rtmpErrors:
+				log.Printf("Error starting RTMP server: %v", err)
 			case sig := <-osSignals:
 				log.Printf("Received signal: %v", sig)
 			case <-ctx.Done():
@@ -126,6 +143,10 @@ func main() {
 		// Attempt graceful shutdown
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			log.Printf("Error during server shutdown: %v", err)
+		}
+
+		if err := rtmpServer.ShutdownRtmpServer(); err != nil {
+			log.Printf("Error during RTMP server shutdown: %v", err)
 		}
 	})
 
