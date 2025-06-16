@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"fmt"
 	"net/url"
 	"regexp"
 )
@@ -23,17 +22,14 @@ func patternToRegex(pattern string) (string, []string) {
 	return "^" + regexPattern + "$", varNames
 }
 
-// TODO : remove debug prints
 // extractVariables matches the tcurl against the regex and extracts named variables
 func extractVariables(regexStr string, varNames []string, tcurl string) (map[string]string, bool) {
 	regex, err := regexp.Compile(regexStr)
 	if err != nil {
-		fmt.Println("error", err)
 		return nil, false
 	}
 	match := regex.FindStringSubmatch(tcurl)
 	if match == nil {
-		fmt.Println("match", match)
 		return nil, false
 	}
 	result := map[string]string{}
@@ -42,7 +38,6 @@ func extractVariables(regexStr string, varNames []string, tcurl string) (map[str
 			result[name] = match[i]
 		}
 	}
-	fmt.Println("result", result)
 	return result, true
 }
 

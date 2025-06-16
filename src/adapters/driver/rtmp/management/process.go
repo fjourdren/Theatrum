@@ -16,7 +16,7 @@ import (
 // TODO : move in another adapter
 // StreamProcess represents a single stream with its FFmpeg process
 type StreamProcess struct {
-	username  string
+	username  string // TODO : rework that to use the stream path
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
 	cancel    context.CancelFunc

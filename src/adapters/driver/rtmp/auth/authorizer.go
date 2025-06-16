@@ -36,19 +36,13 @@ func (a *Authorizer) IsAuthorized(tcurl string) bool {
 	return false
 }
 
-// TODO : remove debug prints
 // ExtractVariables extracts variables from TCURL using the first matching pattern
 func (a *Authorizer) ExtractVariables(tcurl string) (map[string]string, bool) {
 	path := extractPathFromTCURL(tcurl)
 	
 	for _, pattern := range a.authorizedPatterns {
 		regexStr, varNames := patternToRegex(pattern)
-		fmt.Println("regexStr", regexStr)
-		fmt.Println("varNames", varNames)
-		fmt.Println("path", path)
 		vars, ok := extractVariables(regexStr, varNames, path)
-		fmt.Println("vars", vars)
-		fmt.Println("ok", ok)
 		if ok {
 			return vars, true
 		}
@@ -62,6 +56,7 @@ func (a *Authorizer) ValidateAuthentication(vars map[string]string, publishingNa
 		return fmt.Errorf("empty publishingName provided")
 	}
 
+	// TODO : implement a production ready authentication default rule (based sha256 + secret salt ?)
 	// If the pattern contains a username variable, check it matches publishingName
 	if username, exists := vars["username"]; exists {
 		if username != publishingName {

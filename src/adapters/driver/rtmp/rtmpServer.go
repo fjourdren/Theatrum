@@ -28,8 +28,7 @@ type RtmpServer struct {
 // Verify interface implementation
 var _ ports.RtmpPort = (*RtmpServer)(nil)
 
-// TODO : set the config in the yaml file
-// TODO : force storage path
+
 // TODO : manage the config
 // TODO : check that all coroutine are well closed (process and handler)
 // TODO : move templating logic
@@ -105,6 +104,9 @@ func (s *RtmpServer) GetActiveStreams() []string {
 	}
 	return []string{}
 }
+
+// TODO : move the config in the yaml file
+// TODO : force storage path
 // getConfig returns a configuration object for the RTMP server
 func (s *RtmpServer) getConfig() config.Config {
 	return config.Config{
