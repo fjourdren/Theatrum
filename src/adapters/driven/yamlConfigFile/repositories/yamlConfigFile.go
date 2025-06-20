@@ -106,7 +106,9 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 	}
 
 	// get stream type from StreamTypeVideoEncoded
-	if stream.Type != string(models.StreamTypeVideoEncoded) && stream.Type != string(models.StreamTypeVideoUnEncoded) {
+	if stream.Type != string(models.StreamTypeVideoEncoded) && 
+	   stream.Type != string(models.StreamTypeVideoUnEncoded) && 
+	   stream.Type != string(models.StreamTypeLive) {
 		return fmt.Errorf("%s has invalid type: %s", context, stream.Type)
 	}
 
@@ -131,14 +133,21 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		}
 		
 		// delete_after_encoding is valid for video_unencoded streams (no validation needed, bool defaults to false)
-	} else {
-		// For video_encoded streams, these fields should not be set
+	} else if stream.Type == string(models.StreamTypeLive) {
+		// Validate live stream specific fields
+		if stream.LiveStreamKey == "" {
+			return fmt.Errorf("%s of type live must have live_stream_key", context)
+		}
+		// For live streams, these fields should not be set
 		if stream.VideoInputPath != "" {
-			return fmt.Errorf("%s of type video_encoded should not have video_input_path", context)
+			return fmt.Errorf("%s of type live should not have video_input_path", context)
 		}
 		if stream.DeleteAfterEncoding {
-			return fmt.Errorf("%s of type video_encoded should not have delete_after_encoding enabled", context)
+			return fmt.Errorf("%s of type live should not have delete_after_encoding enabled", context)
 		}
+	} else {
+		// For video_encoded streams, these fields should not be set
+		
 	}
 
 	// Validate qualities

@@ -48,6 +48,9 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		// Specific fields for video unencoded streams
 		VideoInputPath:      stream.VideoInputPath,
 		DeleteAfterEncoding: stream.DeleteAfterEncoding,
+
+		// Specific fields for live streams
+		LiveStreamKey: stream.LiveStreamKey,
 	}
 }
 

@@ -53,6 +53,9 @@ type Stream struct {
 	// Specific fields for video unencoded streams
 	VideoInputPath      string `yaml:"video_input_path"`
 	DeleteAfterEncoding bool   `yaml:"delete_after_encoding,omitempty"` // If enabled, delete the source file after video encoding (default: false)
+
+	// Specific fields for live streams
+	LiveStreamKey string `yaml:"live_stream_key,omitempty"`
 }
 
 type StreamTemplate struct {

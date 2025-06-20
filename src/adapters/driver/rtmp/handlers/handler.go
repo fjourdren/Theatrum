@@ -15,6 +15,7 @@ import (
 	"Theatrum/adapters/driver/rtmp/flv"
 	stream "Theatrum/adapters/driver/rtmp/management"
 	"Theatrum/adapters/driver/rtmp/models"
+	"Theatrum/domain/models"
 )
 
 // Each connection gets its own handler instance
@@ -23,6 +24,7 @@ import (
 
 // Handler implements the RTMP handler interface
 type Handler struct {
+	stream        *models.Stream // TODO : pass stream
 	streamProcess *stream.StreamProcess
 	streamManager *stream.Manager
 	config        rtmpconfig.Config
@@ -35,6 +37,7 @@ type Handler struct {
 // NewHandler creates a new RTMP handler
 func NewHandler(manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
 	return &Handler{
+		stream: TODO, // TODO : pass stream
 		streamManager: manager,
 		config:        cfg,
 		authorizer:    auth.NewAuthorizer(cfg.AuthorizedPatterns),

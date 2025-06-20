@@ -11,7 +11,7 @@ type StreamType string
 const (
 	StreamTypeVideoUnEncoded StreamType = "video_unencoded"
 	StreamTypeVideoEncoded   StreamType = "video_encoded"
-	// StreamTypeLive StreamType = "live"
+	StreamTypeLive StreamType = "live"
 )
 
 type Stream struct {
@@ -23,6 +23,9 @@ type Stream struct {
 	// Specific fields for video unencoded streams
 	VideoInputPath      string
 	DeleteAfterEncoding bool // If enabled, delete the source file after video encoding (default: false)
+
+	// Specific fields for live streams
+	LiveStreamKey string
 }
 
 func (s *Stream) GetMasterPlaylistTemplatePath() string {
