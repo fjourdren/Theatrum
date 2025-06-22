@@ -7,5 +7,5 @@ import (
 var (
 	PlaceholderBegin = "{"
 	PlaceholderEnd   = "}"
-	PlaceholderRegex = regexp.QuoteMeta(PlaceholderBegin) + `[^` + regexp.QuoteMeta(PlaceholderBegin) + regexp.QuoteMeta(PlaceholderEnd) + `]+` + regexp.QuoteMeta(PlaceholderEnd)
+	PlaceholderRegex = regexp.QuoteMeta(PlaceholderBegin) + `([^` + regexp.QuoteMeta(PlaceholderBegin) + regexp.QuoteMeta(PlaceholderEnd) + `]+)` + regexp.QuoteMeta(PlaceholderEnd)
 )

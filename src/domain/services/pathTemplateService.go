@@ -69,6 +69,34 @@ func (s *PathTemplateService) ExtractValues(template string, input string) (map[
 	return result, nil
 }
 
+// TODO : test this
+func (s *PathTemplateService) MatchesTemplate(template string, input string) bool {
+	// Normalize paths to use forward slashes
+	template = filepath.ToSlash(template)
+	input = filepath.ToSlash(input)
+
+	// Find all {var} placeholders
+	varRegex := regexp.MustCompile(constants.PlaceholderRegex)
+	varNames := varRegex.FindAllString(template, -1)
+
+	// Build regex pattern from template
+	pattern := regexp.QuoteMeta(template)
+	for _, placeholder := range varNames {
+		quotedPlaceholder := regexp.QuoteMeta(placeholder)
+		pattern = strings.Replace(pattern, quotedPlaceholder, `([^/]+)`, 1)
+	}
+
+	// Compile regex
+	re, err := regexp.Compile("^" + pattern + "$")
+	if err != nil {
+		return false
+	}
+
+	// Match input path
+	matches := re.FindStringSubmatch(input)
+	return matches != nil && len(matches)-1 == len(varNames)
+}
+
 func (s *PathTemplateService) ReplacePlaceholders(text string, vars map[string]string) (string, error) {
 	// Regex to find {placeholder}
 	re := regexp.MustCompile(constants.PlaceholderRegex)
