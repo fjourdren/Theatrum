@@ -5,5 +5,4 @@ type Config struct {
 	OutputDir         string
 	ReconnectDelay    int
 	CleanupDelay      int
-	AuthorizedPatterns []string
 } 

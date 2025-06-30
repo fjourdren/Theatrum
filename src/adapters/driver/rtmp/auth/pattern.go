@@ -5,7 +5,7 @@ import (
 	"regexp"
 )
 
-// TODO : move to domain
+// LATER : move to domain
 // patternToRegex converts a pattern with {var} to a regex and returns the regex and the variable names
 func patternToRegex(pattern string) (string, []string) {
 	varNames := []string{}

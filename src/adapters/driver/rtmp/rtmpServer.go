@@ -51,7 +51,7 @@ func (s *RtmpServer) StartRtmpServer() error {
 	s.server = rtmp.NewServer(&rtmp.ServerConfig{
 		OnConnect: func(conn net.Conn) (io.ReadWriteCloser, *rtmp.ConnConfig) {
 			return conn, &rtmp.ConnConfig{
-				Handler: rtmphandler.NewHandler(s.streamManager, s.getConfig()),
+				Handler: rtmphandler.NewHandler(s.applicationService, s.streamManager, s.getConfig()),
 			}
 		},
 	})
@@ -110,9 +110,8 @@ func (s *RtmpServer) GetActiveStreams() []string {
 // getConfig returns a configuration object for the RTMP server
 func (s *RtmpServer) getConfig() config.Config {
 	return config.Config{
-		OutputDir:         "storage/rtmp",
+		OutputDir:         "raw_videos/rtmp", // TODO : manage app config
 		ReconnectDelay:    30,
 		CleanupDelay:      30,
-		AuthorizedPatterns: []string{"/live/{username}"},
 	}
 }

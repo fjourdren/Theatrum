@@ -69,7 +69,6 @@ func (s *PathTemplateService) ExtractValues(template string, input string) (map[
 	return result, nil
 }
 
-// TODO : test this
 func (s *PathTemplateService) MatchesTemplate(template string, input string) bool {
 	// Normalize paths to use forward slashes
 	template = filepath.ToSlash(template)

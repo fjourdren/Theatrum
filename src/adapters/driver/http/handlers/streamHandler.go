@@ -55,7 +55,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", mimeType)
 	}
 
-	// TODO : put in stream config the cache control headers
+	// LATER : put in stream config the cache control headers
 	// Set cache control headers based on file type
 	switch ext {
 	case ".m3u8": // Master playlist and sub-playlists

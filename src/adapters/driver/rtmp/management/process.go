@@ -13,7 +13,7 @@ import (
 	"Theatrum/adapters/driver/rtmp/config"
 )
 
-// TODO : move in another adapter
+// LATER : move in another adapter
 // StreamProcess represents a single stream with its FFmpeg process
 type StreamProcess struct {
 	username  string // TODO : rework that to use the stream path

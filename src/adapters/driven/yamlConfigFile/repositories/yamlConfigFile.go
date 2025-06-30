@@ -98,7 +98,7 @@ func (y *YamlConfigFile) validateConfig(config *yamlConfigFileEntities.Config) e
 	return nil
 }
 
-// TODO : move in domain
+// LATER : move in domain
 func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, context string) error {
 
 	if stream.Type == "" {

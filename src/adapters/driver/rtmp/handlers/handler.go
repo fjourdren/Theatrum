@@ -15,7 +15,7 @@ import (
 	"Theatrum/adapters/driver/rtmp/flv"
 	stream "Theatrum/adapters/driver/rtmp/management"
 	"Theatrum/adapters/driver/rtmp/models"
-	"Theatrum/domain/models"
+	"Theatrum/domain/services"
 )
 
 // Each connection gets its own handler instance
@@ -24,8 +24,8 @@ import (
 
 // Handler implements the RTMP handler interface
 type Handler struct {
-	stream        *models.Stream // TODO : pass stream
-	streamProcess *stream.StreamProcess
+	applicationService *services.ApplicationService
+	streamProcess	*stream.StreamProcess
 	streamManager *stream.Manager
 	config        rtmpconfig.Config
 	authorizer    *auth.Authorizer
@@ -35,12 +35,12 @@ type Handler struct {
 }
 
 // NewHandler creates a new RTMP handler
-func NewHandler(manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
+func NewHandler(applicationService *services.ApplicationService, manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
 	return &Handler{
-		stream: TODO, // TODO : pass stream
+		applicationService: applicationService,
 		streamManager: manager,
 		config:        cfg,
-		authorizer:    auth.NewAuthorizer(cfg.AuthorizedPatterns),
+		authorizer:    auth.NewAuthorizer(applicationService),
 	}
 }
 
@@ -52,8 +52,8 @@ func (h *Handler) OnServe(conn *rtmp.Conn) {
 func (h *Handler) OnConnect(timestamp uint32, cmd *message.NetConnectionConnect) error {
 	log.Printf("RTMP connection from %s", cmd.Command.TCURL)
 	
-	// Extract variables from TCURL
-	vars, ok := h.authorizer.ExtractVariables(cmd.Command.TCURL)
+	// Get the stream and vars from the TCURL
+	stream, vars, ok := h.authorizer.ExtractChannel(cmd.Command.TCURL)
 	if !ok {
 		log.Printf("Failed to extract variables from TCURL '%s'", cmd.Command.TCURL)
 		return fmt.Errorf("failed to extract variables from TCURL: %s", cmd.Command.TCURL)
@@ -70,6 +70,7 @@ func (h *Handler) OnConnect(timestamp uint32, cmd *message.NetConnectionConnect)
 	h.connectionInfo = &models.ConnectionInfo{
 		App:     cmd.Command.App,
 		TCURL:   cmd.Command.TCURL,
+		Stream:  stream,
 		Vars:    vars,
 	}
 	h.connMutex.Unlock()
@@ -97,7 +98,7 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	
 	if connInfo != nil {
 		// Use the stored variables for authentication
-		if err := h.authorizer.ValidateAuthentication(connInfo.Vars, cmd.PublishingName); err != nil {
+		if err := h.authorizer.ValidateAuthentication(connInfo, cmd.PublishingName); err != nil {
 			log.Printf("Authentication failed for TCURL access %s: %v", connInfo.TCURL, err)
 			return err
 		}

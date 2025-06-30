@@ -1,9 +1,12 @@
 package models
 
+import "Theatrum/domain/models"
+
 // ConnectionInfo holds connection details from RTMP connections
 type ConnectionInfo struct {
 	App     string
 	TCURL   string
+	Stream  *models.Stream
 	Vars    map[string]string // Extracted variables from TCURL pattern matching
 }
 
