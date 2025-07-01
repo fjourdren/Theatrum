@@ -7,8 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-
-	"Theatrum/adapters/driver/rtmp/config"
 )
 
 // Manager manages multiple active streams
@@ -30,7 +28,7 @@ func (sm *Manager) SetContext(ctx context.Context) {
 }
 
 // GetOrCreateStream gets an existing stream or creates a new one
-func (sm *Manager) GetOrCreateStream(username string, cfg config.Config) (*StreamProcess, error) {
+func (sm *Manager) GetOrCreateStream(username string, path string) (*StreamProcess, error) {
 	// Try to get existing stream
 	if stream, ok := sm.streams.Load(username); ok {
 		if sp := stream.(*StreamProcess); sp.active.Load() {
@@ -41,7 +39,7 @@ func (sm *Manager) GetOrCreateStream(username string, cfg config.Config) (*Strea
 	}
 
 	// Create new stream
-	stream, err := sm.createNewStream(username, cfg)
+	stream, err := sm.createNewStream(username, path)
 	if err != nil {
 		return nil, err
 	}
@@ -51,8 +49,8 @@ func (sm *Manager) GetOrCreateStream(username string, cfg config.Config) (*Strea
 }
 
 // createNewStream creates a new FFmpeg process for a streamer
-func (sm *Manager) createNewStream(username string, cfg config.Config) (*StreamProcess, error) {
-	outputDir := filepath.Join(cfg.OutputDir, username)
+func (sm *Manager) createNewStream(username string, path string) (*StreamProcess, error) {
+	outputDir := filepath.Join(path, username)
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
 	}

@@ -110,7 +110,6 @@ func (s *RtmpServer) GetActiveStreams() []string {
 // getConfig returns a configuration object for the RTMP server
 func (s *RtmpServer) getConfig() config.Config {
 	return config.Config{
-		OutputDir:         "raw_videos/rtmp", // TODO : manage app config
 		ReconnectDelay:    30,
 		CleanupDelay:      30,
 	}

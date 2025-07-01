@@ -44,6 +44,7 @@ func (a *Authorizer) ExtractChannel(tcurl string) (*domainModels.Stream, map[str
 	for pattern, stream := range *a.applicationService.GetChannels() {
 		regexStr, varNames := patternToRegex(pattern)
 		vars, ok := extractVariables(regexStr, varNames, path)
+		log.Printf("vars: %v", vars)
 		if ok {
 			return &stream, vars, true
 		}

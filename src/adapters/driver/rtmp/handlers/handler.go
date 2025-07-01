@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +17,7 @@ import (
 	"Theatrum/adapters/driver/rtmp/flv"
 	stream "Theatrum/adapters/driver/rtmp/management"
 	"Theatrum/adapters/driver/rtmp/models"
+	"Theatrum/constants"
 	"Theatrum/domain/services"
 )
 
@@ -40,7 +43,7 @@ func NewHandler(applicationService *services.ApplicationService, manager *stream
 		applicationService: applicationService,
 		streamManager: manager,
 		config:        cfg,
-		authorizer:    auth.NewAuthorizer(applicationService),
+		authorizer:    auth.NewAuthorizer(applicationService), // TODO : inject the authorizer
 	}
 }
 
@@ -106,7 +109,15 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 		log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
 	}
 
-	streamProcess, err := h.streamManager.GetOrCreateStream(cmd.PublishingName, h.config)
+	// TODO : move this into pattern matching domain service
+	// Autocomplete path h.connectionInfo.Stream.Path with h.connectionInfo.vars
+	localPath := h.connectionInfo.Stream.Path
+	for key, value := range h.connectionInfo.Vars {
+		localPath = strings.ReplaceAll(localPath, "{"+key+"}", value)
+	}
+	localPath = filepath.Join(constants.VideoDir, localPath)
+
+	streamProcess, err := h.streamManager.GetOrCreateStream(cmd.PublishingName, localPath)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
 		return err
