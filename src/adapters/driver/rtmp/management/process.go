@@ -16,10 +16,10 @@ import (
 // LATER : move in another adapter
 // StreamProcess represents a single stream with its FFmpeg process
 type StreamProcess struct {
-	username  string // TODO : rework that to use the stream path
 	cmd       *exec.Cmd
 	stdin     io.WriteCloser
 	cancel    context.CancelFunc
+	inputPath string
 	outputDir string
 	active    atomic.Bool // atomic boolean for active state
 }
@@ -49,14 +49,14 @@ func createFFmpegCommand(ctx context.Context, outputDir string) *exec.Cmd {
 func (sp *StreamProcess) monitor(sm *Manager) {
 	defer func() {
 		sp.active.Store(false)
-		sm.streams.Delete(sp.username)
-		log.Printf("Stream ended and cleaned up for user: %s", sp.username)
+		sm.streams.Delete(sp.inputPath)
+		log.Printf("Stream ended and cleaned up for: %s", sp.inputPath)
 	}()
 
 	if err := sp.cmd.Wait(); err != nil {
-		log.Printf("FFmpeg exited for user %s: %v", sp.username, err)
+		log.Printf("FFmpeg exited for: %s: %v", sp.inputPath, err)
 	} else {
-		log.Printf("FFmpeg exited normally for user: %s", sp.username)
+		log.Printf("FFmpeg exited normally for: %s", sp.inputPath)
 	}
 }
 
@@ -85,9 +85,9 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 
 	select {
 	case <-done:
-		log.Printf("FFmpeg process exited cleanly for user: %s", sp.username)
+		log.Printf("FFmpeg process exited cleanly for: %s", sp.inputPath)
 	case <-time.After(time.Duration(cfg.CleanupDelay) * time.Second):
-		log.Printf("FFmpeg process did not exit cleanly for user: %s, forcing termination", sp.username)
+		log.Printf("FFmpeg process did not exit cleanly for: %s, forcing termination", sp.inputPath)
 		if sp.cmd.Process != nil {
 			sp.cmd.Process.Kill()
 		}
@@ -97,9 +97,9 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 	go func() {
 		time.Sleep(time.Duration(cfg.CleanupDelay) * time.Second)
 		if err := os.RemoveAll(sp.outputDir); err != nil {
-			log.Printf("Error cleaning up stream directory for user %s: %v", sp.username, err)
+			log.Printf("Error cleaning up stream directory for: %s: %v", sp.inputPath, err)
 		} else {
-			log.Printf("Cleaned up stream directory for user: %s", sp.username)
+			log.Printf("Cleaned up stream directory for: %s", sp.inputPath)
 		}
 	}()
 }
@@ -109,9 +109,9 @@ func (sp *StreamProcess) IsActive() bool {
 	return sp.active.Load()
 }
 
-// Username returns the username for this stream
-func (sp *StreamProcess) Username() string {
-	return sp.username
+// InputPath returns the input path for this stream
+func (sp *StreamProcess) InputPath() string {
+	return sp.inputPath
 }
 
 // Stdin returns the stdin writer for this stream

@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 	"sync"
 )
 
@@ -28,29 +27,29 @@ func (sm *Manager) SetContext(ctx context.Context) {
 }
 
 // GetOrCreateStream gets an existing stream or creates a new one
-func (sm *Manager) GetOrCreateStream(username string, path string) (*StreamProcess, error) {
+func (sm *Manager) GetOrCreateStream(inputPath string, path string) (*StreamProcess, error) {
 	// Try to get existing stream
-	if stream, ok := sm.streams.Load(username); ok {
+	if stream, ok := sm.streams.Load(inputPath); ok {
 		if sp := stream.(*StreamProcess); sp.active.Load() {
 			return sp, nil
 		}
 		// Clean up inactive stream
-		sm.streams.Delete(username)
+		sm.streams.Delete(inputPath)
 	}
 
 	// Create new stream
-	stream, err := sm.createNewStream(username, path)
+	stream, err := sm.createNewStream(inputPath, path)
 	if err != nil {
 		return nil, err
 	}
 
-	sm.streams.Store(username, stream)
+	sm.streams.Store(inputPath, stream)
 	return stream, nil
 }
 
 // createNewStream creates a new FFmpeg process for a streamer
-func (sm *Manager) createNewStream(username string, path string) (*StreamProcess, error) {
-	outputDir := filepath.Join(path, username)
+// TODO : here is the issue with the path
+func (sm *Manager) createNewStream(inputPath string, outputDir string) (*StreamProcess, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
 	}
@@ -70,10 +69,10 @@ func (sm *Manager) createNewStream(username string, path string) (*StreamProcess
 	}
 
 	stream := &StreamProcess{
-		username:  username,
 		cmd:       cmd,
 		stdin:     stdin,
 		cancel:    cancel,
+		inputPath: inputPath,
 		outputDir: outputDir,
 	}
 	stream.active.Store(true)
@@ -81,7 +80,7 @@ func (sm *Manager) createNewStream(username string, path string) (*StreamProcess
 	// Start monitoring goroutine
 	go stream.monitor(sm)
 
-	log.Printf("Started new stream for user: %s", username)
+	log.Printf("Started new stream for : %s", inputPath)
 	return stream, nil
 }
 

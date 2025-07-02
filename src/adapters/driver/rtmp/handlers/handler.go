@@ -117,7 +117,8 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	}
 	localPath = filepath.Join(constants.VideoDir, localPath)
 
-	streamProcess, err := h.streamManager.GetOrCreateStream(cmd.PublishingName, localPath)
+	fmt.Println("TCURL DEBUG", connInfo.TCURL, localPath)
+	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
 		return err
@@ -131,13 +132,13 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 
 func (h *Handler) OnClose() {
 	if h.streamProcess != nil {
-		log.Printf("Connection closed for user: %s", h.streamProcess.Username())
+		log.Printf("Connection closed for: %s", h.streamProcess.InputPath())
 
 		go func() {
 			time.Sleep(time.Duration(h.config.ReconnectDelay) * time.Second)
 
 			if h.streamProcess.IsActive() {
-				log.Printf("No reconnection detected for user %s, stopping stream", h.streamProcess.Username())
+				log.Printf("No reconnection detected for %s, stopping stream", h.streamProcess.InputPath())
 				h.streamProcess.Stop(h.config)
 			}
 		}()

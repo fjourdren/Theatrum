@@ -87,8 +87,8 @@ func (s *RtmpServer) ShutdownRtmpServer() error {
 	// Stop all active streams
 	if s.streamManager != nil {
 		activeStreams := s.streamManager.GetActiveStreams()
-		for _, username := range activeStreams {
-			log.Printf("Stopping stream for user: %s", username)
+		for _, inputPath := range activeStreams {
+			log.Printf("Stopping stream for: %s", inputPath)
 			// Note: The stream manager doesn't have a GetStream method
 			// The streams will be cleaned up automatically when the server shuts down
 		}
