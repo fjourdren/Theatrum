@@ -115,7 +115,7 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	for key, value := range h.connectionInfo.Vars {
 		localPath = strings.ReplaceAll(localPath, "{"+key+"}", value)
 	}
-	localPath = filepath.Join(constants.VideoDir, localPath)
+	localPath = filepath.Join(constants.VideoDir, localPath, constants.DefaultQuality)
 
 	fmt.Println("TCURL DEBUG", connInfo.TCURL, localPath)
 	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath)
