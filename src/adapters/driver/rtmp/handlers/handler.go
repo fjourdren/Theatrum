@@ -5,14 +5,12 @@ import (
 	"io"
 	"log"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/yutopp/go-rtmp"
 	"github.com/yutopp/go-rtmp/message"
 
-	"Theatrum/adapters/driver/rtmp/auth"
 	rtmpconfig "Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/adapters/driver/rtmp/flv"
 	stream "Theatrum/adapters/driver/rtmp/management"
@@ -31,7 +29,6 @@ type Handler struct {
 	streamProcess	*stream.StreamProcess
 	streamManager *stream.Manager
 	config        rtmpconfig.Config
-	authorizer    *auth.Authorizer
 	flvWriter     *flv.Writer
 	connectionInfo *models.ConnectionInfo
 	connMutex      sync.RWMutex
@@ -43,7 +40,6 @@ func NewHandler(applicationService *services.ApplicationService, manager *stream
 		applicationService: applicationService,
 		streamManager: manager,
 		config:        cfg,
-		authorizer:    auth.NewAuthorizer(applicationService), // TODO : inject the authorizer
 	}
 }
 
@@ -54,31 +50,16 @@ func (h *Handler) OnServe(conn *rtmp.Conn) {
 
 func (h *Handler) OnConnect(timestamp uint32, cmd *message.NetConnectionConnect) error {
 	log.Printf("RTMP connection from %s", cmd.Command.TCURL)
-	
-	// Get the stream and vars from the TCURL
-	stream, vars, ok := h.authorizer.ExtractChannel(cmd.Command.TCURL)
-	if !ok {
-		log.Printf("Failed to extract variables from TCURL '%s'", cmd.Command.TCURL)
-		return fmt.Errorf("failed to extract variables from TCURL: %s", cmd.Command.TCURL)
-	}
-	
-	// Check if TCURL is authorized
-	if !h.authorizer.IsAuthorized(cmd.Command.TCURL) {
-		log.Printf("Unauthorized TCURL '%s' in OnConnect", cmd.Command.TCURL)
-		return fmt.Errorf("unauthorized TCURL: %s", cmd.Command.TCURL)
-	}
-	
+
 	// Store connection information for this handler instance
 	h.connMutex.Lock()
 	h.connectionInfo = &models.ConnectionInfo{
 		App:     cmd.Command.App,
 		TCURL:   cmd.Command.TCURL,
-		Stream:  stream,
-		Vars:    vars,
 	}
 	h.connMutex.Unlock()
-	
-	log.Printf("RTMP connection authorized for path: %s", cmd.Command.TCURL)
+
+	log.Printf("RTMP connection accepted for path: %s", cmd.Command.TCURL)
 	return nil
 }
 
@@ -98,24 +79,14 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	h.connMutex.RLock()
 	connInfo := h.connectionInfo
 	h.connMutex.RUnlock()
-	
-	if connInfo != nil {
-		// Use the stored variables for authentication
-		if err := h.authorizer.ValidateAuthentication(connInfo, cmd.PublishingName); err != nil {
-			log.Printf("Authentication failed for TCURL access %s: %v", connInfo.TCURL, err)
-			return err
-		}
 
-		log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
+	if connInfo == nil {
+		return fmt.Errorf("no connection info available")
 	}
 
-	// TODO : move this into pattern matching domain service
-	// Autocomplete path h.connectionInfo.Stream.Path with h.connectionInfo.vars
-	localPath := h.connectionInfo.Stream.Path
-	for key, value := range h.connectionInfo.Vars {
-		localPath = strings.ReplaceAll(localPath, "{"+key+"}", value)
-	}
-	localPath = filepath.Join(constants.VideoDir, localPath, constants.DefaultQuality)
+	log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
+
+	localPath := filepath.Join(constants.VideoDir, connInfo.App, constants.DefaultQuality)
 
 	fmt.Println("TCURL DEBUG", connInfo.TCURL, localPath)
 	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath)
