@@ -1,3 +1,5 @@
+// Package auth is DEPRECATED. Use domain/services.RtmpAuthService instead.
+// This package is kept for backward compatibility but should not be used for new code.
 package auth
 
 import (
@@ -9,7 +11,7 @@ import (
 	"log"
 )
 
-// LATER : move to domain
+// Deprecated: Authorizer is deprecated. Use services.RtmpAuthService instead.
 // Authorizer handles URL pattern matching and authorization
 type Authorizer struct {
 	applicationService *services.ApplicationService

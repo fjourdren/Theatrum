@@ -56,6 +56,11 @@ func main() {
 	container.Provide(services.NewStreamService)
 	container.Provide(services.NewEncodeService)
 
+	// Provide RTMP authentication service
+	container.Provide(func(appService *services.ApplicationService, templateService *services.PathTemplateService) *services.RtmpAuthService {
+		return services.NewRtmpAuthService(appService.GetChannels(), templateService)
+	})
+
 	// Provide job queue
 	container.Provide(func(encodeService *services.EncodeService, storage repositories.StoragePort) *jobs.EncodeJobQueue {
 		return jobs.NewEncodeJobQueue(encodeService, storage)
@@ -77,8 +82,8 @@ func main() {
 	})
 
 	// Provide RTMP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService) ports.RtmpPort {
-		return rtmpAdapter.NewRtmpServer(appService, streamService)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService)
 	})
 
 	// Start the application and jobs

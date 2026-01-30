@@ -48,7 +48,7 @@ func (sm *Manager) GetOrCreateStream(inputPath string, path string) (*StreamProc
 }
 
 // createNewStream creates a new FFmpeg process for a streamer
-// TODO : here is the issue with the path
+// The outputDir is built by the RtmpAuthService using PathTemplateService
 func (sm *Manager) createNewStream(inputPath string, outputDir string) (*StreamProcess, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
