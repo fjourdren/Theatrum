@@ -104,7 +104,6 @@ func (s *RtmpServer) GetActiveStreams() []string {
 	}
 	return []string{}
 }
-
 // TODO : move the config in the yaml file
 // TODO : force storage path
 // getConfig returns a configuration object for the RTMP server
@@ -114,3 +113,4 @@ func (s *RtmpServer) getConfig() config.Config {
 		CleanupDelay:      30,
 	}
 }
+

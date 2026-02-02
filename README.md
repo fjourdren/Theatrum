@@ -101,10 +101,6 @@ stream_templates:
     stream:
       type: live
       path: "rtmp/{username}"
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
       distribution:
         hls:
           segment_duration: 6
@@ -238,6 +234,19 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 4
+```
+
+### Live Stream
+```yaml
+stream_templates:
+  live_passthrough:
+    stream:
+      type: live
+      path: "rtmp/{username}"
+      distribution:
+        hls:
+          segment_duration: 6
+      live_stream_key: "your-secure-rtmp-secret-key"
 ```
 
 ## License

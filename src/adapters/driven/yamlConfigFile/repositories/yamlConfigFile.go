@@ -151,7 +151,8 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 	}
 
 	// Validate qualities
-	if len(stream.Qualities) == 0 {
+	// TODO : make qualities optional for some types of streams
+	if stream.Type != string(models.StreamTypeLive) && len(stream.Qualities) == 0 {
 		return fmt.Errorf("%s has no quality profiles defined", context)
 	}
 

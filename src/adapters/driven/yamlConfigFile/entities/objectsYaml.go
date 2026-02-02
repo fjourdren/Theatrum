@@ -47,7 +47,7 @@ type Hls struct {
 type Stream struct {
 	Type         string             `yaml:"type"`
 	Path         string             `yaml:"path"`
-	Qualities    map[string]Quality `yaml:"qualities"`
+	Qualities    map[string]Quality `yaml:"qualities,omitempty"`
 	Distribution Distribution       `yaml:"distribution"`
 
 	// Specific fields for video unencoded streams

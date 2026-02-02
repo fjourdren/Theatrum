@@ -117,7 +117,6 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	}
 	localPath = filepath.Join(constants.VideoDir, localPath, constants.DefaultQuality)
 
-	fmt.Println("TCURL DEBUG", connInfo.TCURL, localPath)
 	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)

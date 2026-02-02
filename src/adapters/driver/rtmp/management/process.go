@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"Theatrum/adapters/driver/rtmp/config"
+	"Theatrum/constants"
 )
 
 // LATER : move in another adapter
@@ -26,6 +27,10 @@ type StreamProcess struct {
 
 // createFFmpegCommand creates an FFmpeg command with the specified settings
 func createFFmpegCommand(ctx context.Context, outputDir string) *exec.Cmd {
+	// TODO : create master playlist
+	// TODO : record
+	// TODO : encode multiple qualities
+	// TODO : reduce process destruction time
 	return exec.CommandContext(ctx, "ffmpeg",
 		"-re",                  // clock to incoming timestamps
 		"-fflags", "+nobuffer", // disable buffering
@@ -40,8 +45,8 @@ func createFFmpegCommand(ctx context.Context, outputDir string) *exec.Cmd {
 		"-hls_flags", "delete_segments+temp_file+independent_segments",
 		"-hls_segment_type", "mpegts",
 		"-hls_allow_cache", "0", // disable client caching
-		"-hls_segment_filename", filepath.Join(outputDir, "live_%03d.ts"),
-		filepath.Join(outputDir, "live.m3u8"),
+		"-hls_segment_filename", filepath.Join(outputDir, constants.SegmentName),
+		filepath.Join(outputDir, constants.SubPlaylist),
 	)
 }
 
