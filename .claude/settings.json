@@ -1,0 +1,54 @@
+{
+  "project": {
+    "name": "Theatrum",
+    "description": "A powerful streaming server built in Go supporting Video on Demand (VOD) with adaptive bitrate streaming, multiple quality profiles, HLS protocol, and live RTMP streaming.",
+    "type": "streaming-server"
+  },
+  "architecture": {
+    "pattern": "hexagonal",
+    "language": "go",
+    "structure": {
+      "src/cmd": "Application entry point",
+      "src/domain/models": "Domain entities (Stream, Quality, Application, Server, Distribution)",
+      "src/domain/services": "Business logic services (ApplicationService, StreamService, EncodeService, PathTemplateService)",
+      "src/domain/repositories": "Port interfaces for driven adapters",
+      "src/domain/jobs": "Background job processing (encoding queue, video detection)",
+      "src/adapters/driven": "Implementations of port interfaces (ffmpegEncoder, fileAccess, yamlConfigFile)",
+      "src/adapters/driver": "Input adapters (HTTP server, RTMP server)",
+      "src/adapters/driver/rtmp": "RTMP streaming server implementation",
+      "src/constants": "Application constants and configuration values"
+    }
+  },
+  "conventions": {
+    "naming": {
+      "files": "camelCase for Go files",
+      "packages": "lowercase single words",
+      "interfaces": "Suffixed with 'Port' for repository interfaces"
+    },
+    "testing": {
+      "location": "Same package with _test.go suffix",
+      "framework": "Go standard testing"
+    }
+  },
+  "dependencies": {
+    "injection": "uber/dig for dependency injection",
+    "rtmp": "github.com/yutopp/go-rtmp for RTMP protocol",
+    "config": "YAML configuration files"
+  },
+  "rtmp": {
+    "status": "active-development",
+    "components": {
+      "server": "src/adapters/driver/rtmp/rtmpServer.go",
+      "handlers": "src/adapters/driver/rtmp/handlers/handler.go",
+      "management": "src/adapters/driver/rtmp/management/ (manager.go, process.go)",
+      "authentication": "src/adapters/driver/rtmp/auth/ (authorizer.go, pattern.go)",
+      "flv": "src/adapters/driver/rtmp/flv/ (writer.go, muxer.go)"
+    },
+    "flow": "RTMP Client -> RTMP Server -> Handler -> Authorization -> StreamManager -> FFmpeg -> HLS output"
+  },
+  "development": {
+    "build": "go build -o theatrum ./src/cmd/main.go",
+    "run": "go run ./src/cmd/main.go",
+    "config": "config.yml (copy from config.yml.example)"
+  }
+}

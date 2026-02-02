@@ -19,25 +19,22 @@ import (
 // RtmpServer implements the RtmpPort interface
 type RtmpServer struct {
 	applicationService *services.ApplicationService
-	streamService     *services.StreamService
-	server            *rtmp.Server
-	listener          net.Listener
-	streamManager     *stream.Manager
+	streamService      *services.StreamService
+	rtmpAuthService    *services.RtmpAuthService
+	server             *rtmp.Server
+	listener           net.Listener
+	streamManager      *stream.Manager
 }
 
 // Verify interface implementation
 var _ ports.RtmpPort = (*RtmpServer)(nil)
 
-
-// TODO : manage the config
-// TODO : check that all coroutine are well closed (process and handler)
-// TODO : move templating logic
-// TODO : move auth logic
-func NewRtmpServer(applicationService *services.ApplicationService, streamService *services.StreamService) ports.RtmpPort {
+func NewRtmpServer(applicationService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService) ports.RtmpPort {
 	return &RtmpServer{
 		applicationService: applicationService,
-		streamService:     streamService,
-		streamManager:     stream.NewManager(),
+		streamService:      streamService,
+		rtmpAuthService:    rtmpAuthService,
+		streamManager:      stream.NewManager(),
 	}
 }
 
@@ -51,7 +48,7 @@ func (s *RtmpServer) StartRtmpServer() error {
 	s.server = rtmp.NewServer(&rtmp.ServerConfig{
 		OnConnect: func(conn net.Conn) (io.ReadWriteCloser, *rtmp.ConnConfig) {
 			return conn, &rtmp.ConnConfig{
-				Handler: rtmphandler.NewHandler(s.applicationService, s.streamManager, s.getConfig()),
+				Handler: rtmphandler.NewHandler(s.rtmpAuthService, s.streamManager, s.getConfig()),
 			}
 		},
 	})
@@ -104,13 +101,15 @@ func (s *RtmpServer) GetActiveStreams() []string {
 	}
 	return []string{}
 }
+
 // TODO : move the config in the yaml file
 // TODO : force storage path
-// getConfig returns a configuration object for the RTMP server
+// getConfig returns a configuration object for the RTMP server from domain config
 func (s *RtmpServer) getConfig() config.Config {
+	rtmpConfig := s.applicationService.GetServer().RTMP
 	return config.Config{
-		ReconnectDelay:    30,
-		CleanupDelay:      30,
+		ReconnectDelay: rtmpConfig.ReconnectDelay,
+		CleanupDelay:   rtmpConfig.CleanupDelay,
 	}
 }
 

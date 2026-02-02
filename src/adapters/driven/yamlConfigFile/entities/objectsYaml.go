@@ -18,8 +18,14 @@ type AllStreamsPlaylist struct {
 }
 
 type Server struct {
-	HTTPPort int `yaml:"http"`
-	RTMPPort int `yaml:"rtmp"`
+	HTTPPort int  `yaml:"http"`
+	RTMPPort int  `yaml:"rtmp"`
+	RTMP     RTMP `yaml:"rtmp_config,omitempty"`
+}
+
+type RTMP struct {
+	ReconnectDelay int `yaml:"reconnect_delay,omitempty"` // Seconds to wait before cleaning up disconnected stream (default: 30)
+	CleanupDelay   int `yaml:"cleanup_delay,omitempty"`   // Seconds to wait before removing stream files (default: 30)
 }
 
 type Audio struct {

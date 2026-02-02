@@ -41,7 +41,8 @@ data/
 .env.*.local
 
 # Build output
-build/ 
+build/
+main
 
 # Config files
 config.yml

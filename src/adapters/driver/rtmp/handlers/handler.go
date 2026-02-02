@@ -5,14 +5,12 @@ import (
 	"io"
 	"log"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
 	"github.com/yutopp/go-rtmp"
 	"github.com/yutopp/go-rtmp/message"
 
-	"Theatrum/adapters/driver/rtmp/auth"
 	rtmpconfig "Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/adapters/driver/rtmp/flv"
 	stream "Theatrum/adapters/driver/rtmp/management"
@@ -21,29 +19,24 @@ import (
 	"Theatrum/domain/services"
 )
 
-// Each connection gets its own handler instance
-// So we need to store the connection info for this handler instance
-// Since each connection gets its own handler instance (from main.go)
-
 // Handler implements the RTMP handler interface
+// Each connection gets its own handler instance
 type Handler struct {
-	applicationService *services.ApplicationService
-	streamProcess	*stream.StreamProcess
-	streamManager *stream.Manager
-	config        rtmpconfig.Config
-	authorizer    *auth.Authorizer
-	flvWriter     *flv.Writer
-	connectionInfo *models.ConnectionInfo
-	connMutex      sync.RWMutex
+	rtmpAuthService *services.RtmpAuthService
+	streamProcess   *stream.StreamProcess
+	streamManager   *stream.Manager
+	config          rtmpconfig.Config
+	flvWriter       *flv.Writer
+	connectionInfo  *models.ConnectionInfo
+	connMutex       sync.RWMutex
 }
 
-// NewHandler creates a new RTMP handler
-func NewHandler(applicationService *services.ApplicationService, manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
+// NewHandler creates a new RTMP handler with injected dependencies
+func NewHandler(rtmpAuthService *services.RtmpAuthService, manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
 	return &Handler{
-		applicationService: applicationService,
-		streamManager: manager,
-		config:        cfg,
-		authorizer:    auth.NewAuthorizer(applicationService), // TODO : inject the authorizer
+		rtmpAuthService: rtmpAuthService,
+		streamManager:   manager,
+		config:          cfg,
 	}
 }
 
@@ -54,30 +47,30 @@ func (h *Handler) OnServe(conn *rtmp.Conn) {
 
 func (h *Handler) OnConnect(timestamp uint32, cmd *message.NetConnectionConnect) error {
 	log.Printf("RTMP connection from %s", cmd.Command.TCURL)
-	
-	// Get the stream and vars from the TCURL
-	stream, vars, ok := h.authorizer.ExtractChannel(cmd.Command.TCURL)
+
+	// Extract channel configuration and variables from TCURL using domain service
+	stream, vars, ok := h.rtmpAuthService.ExtractChannel(cmd.Command.TCURL)
 	if !ok {
-		log.Printf("Failed to extract variables from TCURL '%s'", cmd.Command.TCURL)
-		return fmt.Errorf("failed to extract variables from TCURL: %s", cmd.Command.TCURL)
+		log.Printf("Failed to extract channel from TCURL '%s'", cmd.Command.TCURL)
+		return fmt.Errorf("failed to extract channel from TCURL: %s", cmd.Command.TCURL)
 	}
-	
+
 	// Check if TCURL is authorized
-	if !h.authorizer.IsAuthorized(cmd.Command.TCURL) {
+	if !h.rtmpAuthService.IsAuthorized(cmd.Command.TCURL) {
 		log.Printf("Unauthorized TCURL '%s' in OnConnect", cmd.Command.TCURL)
 		return fmt.Errorf("unauthorized TCURL: %s", cmd.Command.TCURL)
 	}
-	
+
 	// Store connection information for this handler instance
 	h.connMutex.Lock()
 	h.connectionInfo = &models.ConnectionInfo{
-		App:     cmd.Command.App,
-		TCURL:   cmd.Command.TCURL,
-		Stream:  stream,
-		Vars:    vars,
+		App:    cmd.Command.App,
+		TCURL:  cmd.Command.TCURL,
+		Stream: stream,
+		Vars:   vars,
 	}
 	h.connMutex.Unlock()
-	
+
 	log.Printf("RTMP connection authorized for path: %s", cmd.Command.TCURL)
 	return nil
 }
@@ -98,25 +91,28 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	h.connMutex.RLock()
 	connInfo := h.connectionInfo
 	h.connMutex.RUnlock()
-	
-	if connInfo != nil {
-		// Use the stored variables for authentication
-		if err := h.authorizer.ValidateAuthentication(connInfo, cmd.PublishingName); err != nil {
-			log.Printf("Authentication failed for TCURL access %s: %v", connInfo.TCURL, err)
-			return err
-		}
 
-		log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
+	if connInfo == nil {
+		return fmt.Errorf("no connection info available")
 	}
 
-	// TODO : move this into pattern matching domain service
-	// Autocomplete path h.connectionInfo.Stream.Path with h.connectionInfo.vars
-	localPath := h.connectionInfo.Stream.Path
-	for key, value := range h.connectionInfo.Vars {
-		localPath = strings.ReplaceAll(localPath, "{"+key+"}", value)
+	// Validate authentication using domain service
+	if err := h.rtmpAuthService.ValidateAuthentication(connInfo.Stream, connInfo.Vars, cmd.PublishingName); err != nil {
+		log.Printf("Authentication failed for TCURL %s: %v", connInfo.TCURL, err)
+		return err
 	}
-	localPath = filepath.Join(constants.VideoDir, localPath, constants.DefaultQuality)
 
+	log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
+
+	// Build stream path using domain service
+	streamPath, err := h.rtmpAuthService.BuildStreamPath(connInfo.Stream, connInfo.Vars)
+	if err != nil {
+		log.Printf("Failed to build stream path: %v", err)
+		return fmt.Errorf("failed to build stream path: %w", err)
+	}
+	localPath := filepath.Join(constants.VideoDir, streamPath, constants.DefaultQuality)
+
+	log.Printf("Stream output path: %s", localPath)
 	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
