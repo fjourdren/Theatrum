@@ -49,3 +49,6 @@ config.yml
 
 # Temp test files
 /cmd/
+
+# AI
+.claude/

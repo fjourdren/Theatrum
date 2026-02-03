@@ -64,7 +64,8 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		DeleteAfterEncoding: stream.DeleteAfterEncoding,
 
 		// Specific fields for live streams
-		LiveStreamKey: stream.LiveStreamKey,
+		LiveStreamKey:     stream.LiveStreamKey,
+		AuthTokenTemplate: stream.AuthTokenTemplate,
 	}
 }
 

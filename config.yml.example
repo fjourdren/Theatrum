@@ -87,7 +87,8 @@ stream_templates:
     stream: &live_stream_config
       type: live
       path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"  # Used for XOR authentication
+      live_stream_key: "your-secure-rtmp-secret-key"  # Secret key for XOR authentication
+      auth_token_template: "{username}"               # Template for XOR input (uses URL variables)
       qualities:
         low: *LOW
         medium: *MEDIUM

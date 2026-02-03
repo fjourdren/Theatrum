@@ -58,15 +58,39 @@ func (s *RtmpAuthService) ValidateAuthentication(stream *models.Stream, vars map
 		return fmt.Errorf("empty publishingName provided")
 	}
 
-	// Basic authentication using username XORed with live_stream_key
-	if username, exists := vars["username"]; exists {
-		expectedToken := s.xorString(stream.LiveStreamKey, username)
-		if publishingName != expectedToken {
-			return fmt.Errorf("invalid authentication token")
-		}
+	// Build XOR input from auth_token_template by replacing {var} placeholders
+	xorInput, err := s.buildAuthInput(stream.AuthTokenTemplate, vars)
+	if err != nil {
+		return fmt.Errorf("authentication failed: %w", err)
+	}
+
+	expectedToken := s.xorString(stream.LiveStreamKey, xorInput)
+	if publishingName != expectedToken {
+		return fmt.Errorf("invalid authentication token")
 	}
 
 	return nil
+}
+
+// buildAuthInput replaces {var} placeholders in template with values from vars
+func (s *RtmpAuthService) buildAuthInput(template string, vars map[string]string) (string, error) {
+	varRegex := regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+
+	var missingVars []string
+	result := varRegex.ReplaceAllStringFunc(template, func(match string) string {
+		varName := match[1 : len(match)-1] // Remove { and }
+		if val, ok := vars[varName]; ok {
+			return val
+		}
+		missingVars = append(missingVars, varName)
+		return match
+	})
+
+	if len(missingVars) > 0 {
+		return "", fmt.Errorf("missing variables in URL: %v", missingVars)
+	}
+
+	return result, nil
 }
 
 // BuildStreamPath builds the output path for a stream using template variables

@@ -61,7 +61,8 @@ type Stream struct {
 	DeleteAfterEncoding bool   `yaml:"delete_after_encoding,omitempty"` // If enabled, delete the source file after video encoding (default: false)
 
 	// Specific fields for live streams
-	LiveStreamKey string `yaml:"live_stream_key,omitempty"`
+	LiveStreamKey     string `yaml:"live_stream_key"`
+	AuthTokenTemplate string `yaml:"auth_token_template"` // Template for XOR auth, e.g. "{username}" or "{room_id}{username}"
 }
 
 type StreamTemplate struct {

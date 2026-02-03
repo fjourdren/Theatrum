@@ -25,7 +25,8 @@ type Stream struct {
 	DeleteAfterEncoding bool // If enabled, delete the source file after video encoding (default: false)
 
 	// Specific fields for live streams
-	LiveStreamKey string
+	LiveStreamKey     string
+	AuthTokenTemplate string // Template for XOR auth input, uses {var} placeholders
 }
 
 func (s *Stream) GetMasterPlaylistTemplatePath() string {

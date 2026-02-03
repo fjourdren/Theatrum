@@ -3,6 +3,7 @@ package repositories
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -93,6 +94,13 @@ func (y *YamlConfigFile) validateConfig(config *yamlConfigFileEntities.Config) e
 		if err := y.validateStream(channel.Stream, fmt.Sprintf("channel '%s'", name)); err != nil {
 			return err
 		}
+
+		// Live streams require auth_token_template variables to exist in channel pattern
+		if channel.Stream.Type == string(models.StreamTypeLive) {
+			if err := y.validateAuthTokenTemplate(name, channel.Stream); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -137,6 +145,9 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		// Validate live stream specific fields
 		if stream.LiveStreamKey == "" {
 			return fmt.Errorf("%s of type live must have live_stream_key", context)
+		}
+		if stream.AuthTokenTemplate == "" {
+			return fmt.Errorf("%s of type live must have auth_token_template", context)
 		}
 		// For live streams, these fields should not be set
 		if stream.VideoInputPath != "" {
@@ -207,6 +218,27 @@ func (y *YamlConfigFile) validateDistribution(distribution yamlConfigFileEntitie
 	// Validate HLS settings
 	if distribution.Hls.SegmentDuration <= 0 {
 		return fmt.Errorf("%s has invalid HLS segment_duration: must be greater than 0", context)
+	}
+
+	return nil
+}
+
+func (y *YamlConfigFile) validateAuthTokenTemplate(channelName string, stream yamlConfigFileEntities.Stream) error {
+	// Extract variable names from template
+	varRegex := regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+	templateVars := varRegex.FindAllStringSubmatch(stream.AuthTokenTemplate, -1)
+
+	if len(templateVars) == 0 {
+		return fmt.Errorf("channel '%s': auth_token_template must contain at least one {variable}", channelName)
+	}
+
+	// Verify each template variable exists in channel pattern
+	for _, match := range templateVars {
+		varName := match[1]
+		varPlaceholder := "{" + varName + "}"
+		if !strings.Contains(channelName, varPlaceholder) {
+			return fmt.Errorf("channel '%s': auth_token_template references {%s} but channel pattern doesn't contain it", channelName, varName)
+		}
 	}
 
 	return nil
