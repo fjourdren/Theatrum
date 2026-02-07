@@ -110,10 +110,18 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 		log.Printf("Failed to build stream path: %v", err)
 		return fmt.Errorf("failed to build stream path: %w", err)
 	}
-	localPath := filepath.Join(constants.VideoDir, streamPath, constants.DefaultQuality)
+
+	// With qualities: FFmpeg creates quality subdirs via %v in the output pattern
+	// Without qualities: output goes into the default quality subdirectory
+	var localPath string
+	if len(connInfo.Stream.Qualities) > 0 {
+		localPath = filepath.Join(constants.VideoDir, streamPath)
+	} else {
+		localPath = filepath.Join(constants.VideoDir, streamPath, constants.DefaultQuality)
+	}
 
 	log.Printf("Stream output path: %s", localPath)
-	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath)
+	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
 		return err

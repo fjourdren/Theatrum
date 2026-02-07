@@ -2,6 +2,7 @@ package stream
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -10,8 +11,10 @@ import (
 	"sync/atomic"
 	"time"
 
+	"Theatrum/adapters/driven/ffmpegEncoder/ffmpegargs"
 	"Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/constants"
+	"Theatrum/domain/models"
 )
 
 // LATER : move in another adapter
@@ -25,29 +28,71 @@ type StreamProcess struct {
 	active    atomic.Bool // atomic boolean for active state
 }
 
-// createFFmpegCommand creates an FFmpeg command with the specified settings
-func createFFmpegCommand(ctx context.Context, outputDir string) *exec.Cmd {
-	// TODO : create master playlist
-	// TODO : record
-	// TODO : encode multiple qualities
-	// TODO : reduce process destruction time
+// createFFmpegCommand creates an FFmpeg command with the specified settings.
+// When the stream has qualities defined, it produces multi-quality HLS output.
+// Otherwise it uses codec copy for passthrough.
+func createFFmpegCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
+	if len(stream.Qualities) > 0 {
+		return createMultiQualityCommand(ctx, outputDir, stream)
+	}
+	return createCopyCommand(ctx, outputDir, stream)
+}
+
+// createCopyCommand creates an FFmpeg command that copies codecs without transcoding (passthrough).
+func createCopyCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
+	segmentDuration := fmt.Sprintf("%d", stream.Distribution.Hls.SegmentDuration)
+
 	return exec.CommandContext(ctx, "ffmpeg",
-		"-re",                  // clock to incoming timestamps
-		"-fflags", "+nobuffer", // disable buffering
-		"-flags", "low_delay",  // low delay mode
+		"-re",
+		"-fflags", "+nobuffer",
+		"-flags", "low_delay",
 		"-f", "flv",
 		"-i", "pipe:0",
 		"-c:v", "copy",
 		"-c:a", "copy",
 		"-f", "hls",
-		"-hls_time", "1",
+		"-hls_time", segmentDuration,
 		"-hls_list_size", "3",
 		"-hls_flags", "delete_segments+temp_file+independent_segments",
 		"-hls_segment_type", "mpegts",
-		"-hls_allow_cache", "0", // disable client caching
+		"-hls_allow_cache", "0",
 		"-hls_segment_filename", filepath.Join(outputDir, constants.SegmentName),
 		filepath.Join(outputDir, constants.SubPlaylist),
 	)
+}
+
+// createMultiQualityCommand creates an FFmpeg command that transcodes into multiple quality levels.
+func createMultiQualityCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
+	segmentDuration := fmt.Sprintf("%d", stream.Distribution.Hls.SegmentDuration)
+
+	args := []string{
+		"-re",
+		"-fflags", "+nobuffer",
+		"-flags", "low_delay",
+		"-f", "flv",
+		"-i", "pipe:0",
+	}
+
+	args = ffmpegargs.AddFilter(args, stream.Qualities)
+	args = ffmpegargs.AddVideoCodecLive(args, stream.Qualities)
+	args = ffmpegargs.AddAudioCodec(args, stream.Qualities)
+
+	streamMap := ffmpegargs.BuildVarStreamMap(stream.Qualities)
+
+	args = append(args,
+		"-f", "hls",
+		"-hls_time", segmentDuration,
+		"-hls_list_size", "3",
+		"-hls_flags", "delete_segments+temp_file+independent_segments",
+		"-hls_segment_type", "mpegts",
+		"-hls_allow_cache", "0",
+		"-var_stream_map", streamMap,
+		"-master_pl_name", constants.MasterPlaylist,
+		"-hls_segment_filename", filepath.Join(outputDir, "%v", constants.SegmentName),
+		filepath.Join(outputDir, "%v", constants.SubPlaylist),
+	)
+
+	return exec.CommandContext(ctx, "ffmpeg", args...)
 }
 
 // monitor waits for the FFmpeg process to exit and cleans up
@@ -122,4 +167,4 @@ func (sp *StreamProcess) InputPath() string {
 // Stdin returns the stdin writer for this stream
 func (sp *StreamProcess) Stdin() io.WriteCloser {
 	return sp.stdin
-} 
+}

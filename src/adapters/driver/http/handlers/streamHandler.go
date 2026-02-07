@@ -55,17 +55,26 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", mimeType)
 	}
 
-	// LATER : put in stream config the cache control headers
-	// Set cache control headers based on file type
+	// Set cache control headers based on stream type and file type
+	isLive := h.stream.Type == models.StreamTypeLive
 	switch ext {
-	case ".m3u8": // Master playlist and sub-playlists
-		// Cache playlists for a shorter time since they are updated frequently
-		w.Header().Set("Cache-Control", "public, max-age=600") // 10 minutes cache
-	case ".ts": // Video segments
-		// Cache video segments for a longer time since they don't change
-		w.Header().Set("Cache-Control", "public, max-age=86400") // 24 hours cache
+	case ".m3u8":
+		if isLive {
+			// Live playlists update every segment, must not be cached
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		} else {
+			// VOD playlists are stable
+			w.Header().Set("Cache-Control", "public, max-age=600")
+		}
+	case ".ts":
+		if isLive {
+			// Live segments are short-lived
+			w.Header().Set("Cache-Control", "public, max-age=10")
+		} else {
+			// VOD segments don't change
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
 	default:
-		// For other files, use no cache
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")

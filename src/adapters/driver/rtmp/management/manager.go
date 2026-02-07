@@ -6,6 +6,8 @@ import (
 	"log"
 	"os"
 	"sync"
+
+	"Theatrum/domain/models"
 )
 
 // Manager manages multiple active streams
@@ -27,10 +29,10 @@ func (sm *Manager) SetContext(ctx context.Context) {
 }
 
 // GetOrCreateStream gets an existing stream or creates a new one
-func (sm *Manager) GetOrCreateStream(inputPath string, path string) (*StreamProcess, error) {
+func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream *models.Stream) (*StreamProcess, error) {
 	// Try to get existing stream
-	if stream, ok := sm.streams.Load(inputPath); ok {
-		if sp := stream.(*StreamProcess); sp.active.Load() {
+	if existing, ok := sm.streams.Load(inputPath); ok {
+		if sp := existing.(*StreamProcess); sp.active.Load() {
 			return sp, nil
 		}
 		// Clean up inactive stream
@@ -38,24 +40,24 @@ func (sm *Manager) GetOrCreateStream(inputPath string, path string) (*StreamProc
 	}
 
 	// Create new stream
-	stream, err := sm.createNewStream(inputPath, path)
+	sp, err := sm.createNewStream(inputPath, outputDir, stream)
 	if err != nil {
 		return nil, err
 	}
 
-	sm.streams.Store(inputPath, stream)
-	return stream, nil
+	sm.streams.Store(inputPath, sp)
+	return sp, nil
 }
 
 // createNewStream creates a new FFmpeg process for a streamer
 // The outputDir is built by the RtmpAuthService using PathTemplateService
-func (sm *Manager) createNewStream(inputPath string, outputDir string) (*StreamProcess, error) {
+func (sm *Manager) createNewStream(inputPath string, outputDir string, stream *models.Stream) (*StreamProcess, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := createFFmpegCommand(ctx, outputDir)
+	cmd := createFFmpegCommand(ctx, outputDir, stream)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

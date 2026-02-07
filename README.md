@@ -3,7 +3,7 @@
 ![](imgs/logo.png)
 
 
-A powerful and flexible streaming server that supports video on demand (VOD) with adaptive bitrate streaming capabilities. Built to handle multiple quality profiles and HLS protocol.
+A powerful and flexible streaming server that supports video on demand (VOD) and live RTMP streaming with adaptive bitrate capabilities. Built to handle multiple quality profiles and HLS protocol.
 
 ## Features
 
@@ -12,9 +12,16 @@ A powerful and flexible streaming server that supports video on demand (VOD) wit
   - Automatic mp4 encoding
   - Optional source file deletion after encoding
 
+- 📡 **Live Streaming**
+  - RTMP ingest (OBS, FFmpeg, etc.)
+  - Passthrough mode (codec copy, lowest latency)
+  - Multi-quality transcoding (adaptive bitrate for viewers)
+  - XOR-based stream key authentication
+
 - 🎯 **Quality Profiles**
   - Multi-qualities management
   - Customizable audio and video bitrates
+  - Shared quality profiles between VOD and live
 
 - 🔄 **Streaming Protocols**
   - HLS (HTTP Live Streaming)
@@ -95,17 +102,53 @@ stream_templates:
 ```
 
 #### live
+
+Live streams support two modes:
+
+- **Passthrough** (no `qualities`): codec copy, no transcoding, lowest latency. Outputs a single HLS playlist.
+- **Multi-quality** (with `qualities`): real-time transcoding into multiple quality levels with adaptive bitrate. Outputs a master playlist (`master.m3u8`) referencing per-quality playlists. Uses `-preset veryfast -tune zerolatency` for real-time encoding.
+
 ```yaml
 stream_templates:
-  live:
+  # Passthrough mode (no transcoding)
+  live_passthrough:
     stream:
       type: live
-      path: "rtmp/{username}"
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
       distribution:
         hls:
-          segment_duration: 6
-      live_stream_key: "your-secure-rtmp-secret-key" # Secret key for RTMP authentication
-      auth_token_template: "{username}"              # Template for XOR authentication input
+          segment_duration: 2
+
+  # Multi-quality transcoding
+  live_multiquality:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:        # Optional: add qualities to enable transcoding
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+```
+
+**Output directory structure:**
+```
+# Passthrough (no qualities)
+data/live/myuser/default/
+  playlist.m3u8 + segment_*.ts
+
+# Multi-quality (with qualities)
+data/live/myuser/
+  master.m3u8
+  low/playlist.m3u8 + segment_*.ts
+  medium/playlist.m3u8 + segment_*.ts
+  high/playlist.m3u8 + segment_*.ts
 ```
 
 For live streams, authentication is required using configurable XOR-based tokens.
@@ -262,18 +305,36 @@ stream_templates:
           segment_duration: 4
 ```
 
-### Live Stream
+### Live Stream (Passthrough)
 ```yaml
 stream_templates:
   live_passthrough:
     stream:
       type: live
-      path: "rtmp/{username}"
-      distribution:
-        hls:
-          segment_duration: 6
+      path: "live/{username}"
       live_stream_key: "your-secure-rtmp-secret-key"
       auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+```
+
+### Live Stream (Multi-Quality)
+```yaml
+stream_templates:
+  live_multiquality:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
 ```
 
 ## License

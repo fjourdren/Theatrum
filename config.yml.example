@@ -83,19 +83,31 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
+  # Live stream with multi-quality transcoding (requires CPU for real-time encoding)
   live:
     stream: &live_stream_config
       type: live
       path: "live/{username}"
       live_stream_key: "your-secure-rtmp-secret-key"  # Secret key for XOR authentication
       auth_token_template: "{username}"               # Template for XOR input (uses URL variables)
-      qualities:
+      qualities:                                       # Optional: omit for passthrough (codec copy)
         low: *LOW
         medium: *MEDIUM
         high: *HIGH
       distribution:
         hls:
           segment_duration: 2  # Lower for live streaming
+
+  # Live stream with passthrough (no transcoding, lowest latency)
+  live_passthrough:
+    stream: &live_passthrough_config
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
 
 # ────────────────
 # All streams endpoints

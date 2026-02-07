@@ -24,6 +24,8 @@ src/
 └── adapters/
     ├── driven/              # Output adapters
     │   ├── ffmpegEncoder/   # FFmpeg encoding implementation
+    │   │   ├── ffmpegargs/  # Shared FFmpeg argument builders (filter, codecs, stream map)
+    │   │   └── repositories/# EncoderPort implementation (VOD encoding)
     │   ├── fileAccess/      # File system operations
     │   └── yamlConfigFile/  # YAML configuration loader
     └── driver/              # Input adapters
@@ -60,9 +62,9 @@ StreamManager.GetOrCreateStream() - Creates/reuses FFmpeg process
     ↓
 FLV Writer - Serializes RTMP frames to FLV format
     ↓
-FFmpeg (stdin pipe) - Converts FLV to HLS
+FFmpeg (stdin pipe) - Converts FLV to HLS (passthrough or multi-quality)
     ↓
-HLS output (live.m3u8, live_*.ts segments)
+HLS output (single playlist or master + per-quality playlists)
     ↓
 HTTP Server (port 8080) - Serves HLS to viewers
 ```
@@ -91,7 +93,7 @@ server:
   rtmp: 1935
 
 channels:
-  # Simple - XOR with username only
+  # Passthrough (codec copy, no transcoding, lowest latency)
   "/user/{username}":
     stream:
       type: live
@@ -100,25 +102,33 @@ channels:
       auth_token_template: "{username}"  # REQUIRED for live streams
       distribution:
         hls:
-          segment_duration: 6
+          segment_duration: 2
 
-  # Advanced - XOR with concatenation of multiple variables
-  "/room/{room_id}/user/{username}":
+  # Multi-quality transcoding (adaptive bitrate, requires CPU)
+  "/premium/{username}":
     stream:
       type: live
-      path: "livestreams/{room_id}/{username}"
+      path: "livestreams/{username}"
       live_stream_key: "your-secret-key"
-      auth_token_template: "{room_id}{username}"  # Concatenates before XOR
+      auth_token_template: "{username}"
+      qualities:           # Optional: omit for passthrough
+        low: ...
+        medium: ...
+        high: ...
       distribution:
         hls:
-          segment_duration: 6
+          segment_duration: 2
 ```
+
+**Live stream modes:**
+- **Without `qualities`** (passthrough): codec copy, single playlist at `{path}/default/playlist.m3u8`
+- **With `qualities`** (transcoding): multi-quality HLS with `master.m3u8` + per-quality subdirs (`low/`, `medium/`, `high/`), uses `-preset veryfast -tune zerolatency` for real-time encoding
 
 ## Stream Types
 
 - `video_encoded` - Pre-encoded VOD content
 - `video_unencoded` - Raw videos to be encoded
-- `live` - Live RTMP streams
+- `live` - Live RTMP streams (passthrough or multi-quality transcoding)
 
 ## Development
 
