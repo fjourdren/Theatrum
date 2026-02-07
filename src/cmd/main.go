@@ -53,6 +53,7 @@ func main() {
 		return services.NewApplicationService(application, server, channels, storage, templateService), nil
 	})
 	container.Provide(services.NewPathTemplateService)
+	container.Provide(services.NewLiveStreamRegistry)
 	container.Provide(services.NewStreamService)
 	container.Provide(services.NewEncodeService)
 
@@ -77,13 +78,13 @@ func main() {
 	})
 
 	// Provide HTTP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService) ports.HttpPort {
-		return httpAdapter.NewHttpServer(appService, streamService)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.HttpPort {
+		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry)
 	})
 
 	// Provide RTMP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService) ports.RtmpPort {
-		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry)
 	})
 
 	// Start the application and jobs

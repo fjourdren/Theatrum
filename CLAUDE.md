@@ -124,6 +124,32 @@ channels:
 - **Without `qualities`** (passthrough): codec copy, single playlist at `{path}/default/playlist.m3u8`
 - **With `qualities`** (transcoding): multi-quality HLS with `master.m3u8` + per-quality subdirs (`low/`, `medium/`, `high/`), uses `-preset veryfast -tune zerolatency` for real-time encoding
 
+### Path Template System
+
+Path templates support two types of placeholders:
+
+- **User variables** `{var}` - Extracted from URL patterns (e.g., `{username}`, `{room_id}`)
+- **Built-in functions** `{%FUNC%}` - Auto-generated values computed at resolution time
+
+**Available built-in functions:**
+
+| Function | Description | Example output |
+|----------|-------------|----------------|
+| `{%STARTING_DATE%}` | Current date/time (format: `2006-01-02_15-04-05`) | `2026-02-07_15-30-00` |
+| `{%UUID%}` | Random UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+
+**Example usage in config:**
+```yaml
+path: "livestreams/{username}/{%STARTING_DATE%}"    # → livestreams/alice/2026-02-07_15-30-00
+path: "recordings/{%UUID%}"                          # → recordings/550e8400-e29b-41d4-a716-446655440000
+```
+
+**Implementation details:**
+- Built-in functions are resolved first (phase 1), then user variables (phase 2)
+- Both phases sanitize values through `sanitizeValue()` (alphanumeric, `_`, `-`, `.` only)
+- Registry lives in `PathTemplateService.builtinFuncs`; new functions can be added via `RegisterBuiltinFunc()`
+- Constants defined in `src/constants/templateConstantes.go`
+
 ## Stream Types
 
 - `video_encoded` - Pre-encoded VOD content

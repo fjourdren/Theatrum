@@ -23,18 +23,23 @@ import (
 // Each connection gets its own handler instance
 type Handler struct {
 	rtmpAuthService *services.RtmpAuthService
+	templateService *services.PathTemplateService
+	registry        *services.LiveStreamRegistry
 	streamProcess   *stream.StreamProcess
 	streamManager   *stream.Manager
 	config          rtmpconfig.Config
 	flvWriter       *flv.Writer
 	connectionInfo  *models.ConnectionInfo
+	streamKey       string // computed stream key for registry lookup/cleanup
 	connMutex       sync.RWMutex
 }
 
 // NewHandler creates a new RTMP handler with injected dependencies
-func NewHandler(rtmpAuthService *services.RtmpAuthService, manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
+func NewHandler(rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
 	return &Handler{
 		rtmpAuthService: rtmpAuthService,
+		templateService: templateService,
+		registry:        registry,
 		streamManager:   manager,
 		config:          cfg,
 	}
@@ -104,8 +109,29 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 
 	log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
 
-	// Build stream path using domain service
-	streamPath, err := h.rtmpAuthService.BuildStreamPath(connInfo.Stream, connInfo.Vars)
+	// Generate builtin values for this stream session
+	builtinVars := h.templateService.GenerateBuiltinVars(connInfo.Stream.Path)
+
+	// Compute stream key = stream.Path resolved with user vars only (builtins left as-is)
+	streamKey, _ := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, connInfo.Vars)
+
+	// Atomic: reuse existing builtins on reconnection, store new ones on first publish
+	builtinVars = h.registry.GetOrRegister(streamKey, builtinVars)
+
+	// Merge builtins into vars for full path resolution
+	mergedVars := make(map[string]string)
+	for k, v := range connInfo.Vars {
+		mergedVars[k] = v
+	}
+	for k, v := range builtinVars {
+		mergedVars[k] = v
+	}
+
+	// Store stream key for cleanup in OnClose
+	h.streamKey = streamKey
+
+	// Build stream path using domain service (builtins now come from vars, deterministic)
+	streamPath, err := h.rtmpAuthService.BuildStreamPath(connInfo.Stream, mergedVars)
 	if err != nil {
 		log.Printf("Failed to build stream path: %v", err)
 		return fmt.Errorf("failed to build stream path: %w", err)
@@ -137,16 +163,22 @@ func (h *Handler) OnClose() {
 	if h.streamProcess != nil {
 		log.Printf("Connection closed for: %s", h.streamProcess.InputPath())
 
+		streamKey := h.streamKey
 		go func() {
 			time.Sleep(time.Duration(h.config.ReconnectDelay) * time.Second)
 
 			if h.streamProcess.IsActive() {
 				log.Printf("No reconnection detected for %s, stopping stream", h.streamProcess.InputPath())
 				h.streamProcess.Stop(h.config)
+
+				// Unregister builtin vars after stream definitively stops
+				if streamKey != "" {
+					h.registry.Unregister(streamKey)
+				}
 			}
 		}()
 	}
-	
+
 	// Clean up connection information
 	h.connMutex.Lock()
 	h.connectionInfo = nil

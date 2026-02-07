@@ -224,6 +224,29 @@ channels:
       <<: *default_stream_config
 ```
 
+### Built-in Template Functions
+
+In addition to user variables extracted from URL patterns (`{username}`, `{room_id}`, etc.), path templates support **built-in functions** using the `{%FUNC%}` syntax. These generate values automatically at resolution time.
+
+**Available functions:**
+
+| Function | Description | Example output |
+|----------|-------------|----------------|
+| `{%STARTING_DATE%}` | Current date and time | `2026-02-07_15-30-00` |
+| `{%UUID%}` | Random UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+
+**Example:**
+```yaml
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "livestreams/{username}/{%STARTING_DATE%}"
+      # Resolves to: livestreams/alice/2026-02-07_15-30-00
+```
+
+Built-in functions can be mixed freely with user variables in any path template.
+
 ## Getting Started
 
 1. Clone the repository:

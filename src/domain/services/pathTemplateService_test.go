@@ -1,6 +1,7 @@
 package services
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -321,6 +322,261 @@ func TestPathTemplateService_ReplacePlaceholders(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestPathTemplateService_ReplacePlaceholders_BuiltinFunctions(t *testing.T) {
+	t.Run("UUID replacement via vars", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		result, err := service.ReplacePlaceholders("streams/{%UUID%}/playlist.m3u8", map[string]string{
+			"UUID": "550e8400-e29b-41d4-a716-446655440000",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "streams/550e8400-e29b-41d4-a716-446655440000/playlist.m3u8"
+		if result != expected {
+			t.Errorf("got %q, expected %q", result, expected)
+		}
+	})
+
+	t.Run("STARTING_DATE replacement via vars", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		result, err := service.ReplacePlaceholders("livestreams/{%STARTING_DATE%}/output", map[string]string{
+			"STARTING_DATE": "2026-02-07_15-30-00",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "livestreams/2026-02-07_15-30-00/output"
+		if result != expected {
+			t.Errorf("got %q, expected %q", result, expected)
+		}
+	})
+
+	t.Run("mixed builtin and user variables", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		result, err := service.ReplacePlaceholders("livestreams/{username}/{%UUID%}/playlist.m3u8", map[string]string{
+			"username": "alice",
+			"UUID":     "abcd-1234",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "livestreams/alice/abcd-1234/playlist.m3u8"
+		if result != expected {
+			t.Errorf("got %q, expected %q", result, expected)
+		}
+	})
+
+	t.Run("unknown builtin function returns error", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		_, err := service.ReplacePlaceholders("streams/{%UNKNOWN%}/playlist.m3u8", map[string]string{})
+		if err == nil {
+			t.Fatal("expected error for unknown builtin function, got nil")
+		}
+		if err.Error() != "unknown builtin function: UNKNOWN" {
+			t.Errorf("unexpected error message: %v", err)
+		}
+	})
+
+	t.Run("no conflict between builtin and user variable syntax", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		result, err := service.ReplacePlaceholders("{name}/{%UUID%}", map[string]string{
+			"name": "bob",
+			"UUID": "abcd-1234",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "bob/abcd-1234"
+		if result != expected {
+			t.Errorf("got %q, expected %q", result, expected)
+		}
+	})
+
+	t.Run("known builtin not in vars is left as-is", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		result, err := service.ReplacePlaceholders("livestreams/{username}/{%UUID%}", map[string]string{
+			"username": "alice",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// UUID not in vars → left as literal for stream key computation
+		expected := "livestreams/alice/{%UUID%}"
+		if result != expected {
+			t.Errorf("got %q, expected %q", result, expected)
+		}
+	})
+
+	t.Run("multiple occurrences of same builtin use same value from vars", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		result, err := service.ReplacePlaceholders("{%UUID%}/{%UUID%}", map[string]string{
+			"UUID": "same-uuid",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		expected := "same-uuid/same-uuid"
+		if result != expected {
+			t.Errorf("got %q, expected %q", result, expected)
+		}
+	})
+}
+
+func TestPathTemplateService_GenerateBuiltinVars(t *testing.T) {
+	t.Run("generates UUID when template contains UUID builtin", func(t *testing.T) {
+		service := NewPathTemplateService()
+		service.RegisterBuiltinFunc("UUID", func() string {
+			return "test-uuid-value"
+		})
+
+		vars := service.GenerateBuiltinVars("streams/{%UUID%}/output")
+		if val, ok := vars["UUID"]; !ok {
+			t.Fatal("expected UUID in generated vars")
+		} else if val != "test-uuid-value" {
+			t.Errorf("got %q, expected %q", val, "test-uuid-value")
+		}
+	})
+
+	t.Run("generates STARTING_DATE when template contains it", func(t *testing.T) {
+		service := NewPathTemplateService()
+		service.RegisterBuiltinFunc("STARTING_DATE", func() string {
+			return "2026-02-07_15-30-00"
+		})
+
+		vars := service.GenerateBuiltinVars("livestreams/{%STARTING_DATE%}/output")
+		if val, ok := vars["STARTING_DATE"]; !ok {
+			t.Fatal("expected STARTING_DATE in generated vars")
+		} else if val != "2026-02-07_15-30-00" {
+			t.Errorf("got %q, expected %q", val, "2026-02-07_15-30-00")
+		}
+	})
+
+	t.Run("returns empty map when no builtins in template", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		vars := service.GenerateBuiltinVars("streams/{username}/output")
+		if len(vars) != 0 {
+			t.Errorf("expected empty map, got %v", vars)
+		}
+	})
+
+	t.Run("generates each builtin only once even if repeated", func(t *testing.T) {
+		service := NewPathTemplateService()
+		callCount := 0
+		service.RegisterBuiltinFunc("UUID", func() string {
+			callCount++
+			return "uuid-value"
+		})
+
+		vars := service.GenerateBuiltinVars("{%UUID%}/{%UUID%}")
+		if callCount != 1 {
+			t.Errorf("expected generator called once, got %d", callCount)
+		}
+		if vars["UUID"] != "uuid-value" {
+			t.Errorf("got %q, expected %q", vars["UUID"], "uuid-value")
+		}
+	})
+
+	t.Run("ignores unknown builtins", func(t *testing.T) {
+		service := NewPathTemplateService()
+
+		vars := service.GenerateBuiltinVars("streams/{%UNKNOWN%}/output")
+		if _, ok := vars["UNKNOWN"]; ok {
+			t.Fatal("did not expect UNKNOWN in generated vars")
+		}
+	})
+}
+
+func TestLiveStreamRegistry(t *testing.T) {
+	t.Run("GetOrRegister stores and returns new vars", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		vars := map[string]string{"UUID": "abc-123"}
+
+		result := registry.GetOrRegister("key1", vars)
+		if result["UUID"] != "abc-123" {
+			t.Errorf("got %q, expected %q", result["UUID"], "abc-123")
+		}
+	})
+
+	t.Run("GetOrRegister returns existing vars on reconnection", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		first := map[string]string{"UUID": "first-uuid"}
+		second := map[string]string{"UUID": "second-uuid"}
+
+		registry.GetOrRegister("key1", first)
+		result := registry.GetOrRegister("key1", second)
+
+		if result["UUID"] != "first-uuid" {
+			t.Errorf("got %q, expected %q (should reuse first registration)", result["UUID"], "first-uuid")
+		}
+	})
+
+	t.Run("GetBuiltinVars returns stored vars", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		registry.GetOrRegister("key1", map[string]string{"UUID": "abc-123"})
+
+		vars, ok := registry.GetBuiltinVars("key1")
+		if !ok {
+			t.Fatal("expected to find vars for key1")
+		}
+		if vars["UUID"] != "abc-123" {
+			t.Errorf("got %q, expected %q", vars["UUID"], "abc-123")
+		}
+	})
+
+	t.Run("GetBuiltinVars returns false for unknown key", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+
+		_, ok := registry.GetBuiltinVars("unknown")
+		if ok {
+			t.Fatal("expected false for unknown key")
+		}
+	})
+
+	t.Run("Unregister removes entry", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		registry.GetOrRegister("key1", map[string]string{"UUID": "abc-123"})
+
+		registry.Unregister("key1")
+
+		_, ok := registry.GetBuiltinVars("key1")
+		if ok {
+			t.Fatal("expected false after unregister")
+		}
+	})
+
+	t.Run("concurrent GetOrRegister returns consistent values", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		results := make(chan string, 100)
+
+		for i := 0; i < 100; i++ {
+			go func(id int) {
+				vars := map[string]string{"UUID": fmt.Sprintf("uuid-%d", id)}
+				result := registry.GetOrRegister("key1", vars)
+				results <- result["UUID"]
+			}(i)
+		}
+
+		// All goroutines should get the same value (whichever registered first)
+		var firstResult string
+		for i := 0; i < 100; i++ {
+			r := <-results
+			if firstResult == "" {
+				firstResult = r
+			} else if r != firstResult {
+				t.Errorf("inconsistent result: got %q and %q", firstResult, r)
+			}
+		}
+	})
 }
 
 func TestPathTemplateService_sanitizeValue(t *testing.T) {

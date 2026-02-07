@@ -14,16 +14,20 @@ import (
 )
 
 type StreamHandler struct {
-	stream *models.Stream
-	streamService *services.StreamService
+	stream             *models.Stream
+	streamService      *services.StreamService
 	applicationService *services.ApplicationService
+	templateService    *services.PathTemplateService
+	registry           *services.LiveStreamRegistry
 }
 
-func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService) *StreamHandler {
+func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) *StreamHandler {
 	return &StreamHandler{
-		stream: stream,
-		streamService: streamService,
+		stream:             stream,
+		streamService:      streamService,
 		applicationService: applicationService,
+		templateService:    templateService,
+		registry:           registry,
 	}
 }
 
@@ -78,6 +82,19 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
+	}
+
+	// For live streams, look up pre-resolved builtin vars from the registry
+	if h.stream.Type == models.StreamTypeLive {
+		// Compute stream key (same formula as RTMP side: resolve user vars only)
+		streamKey, _ := h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+
+		if builtinVars, ok := h.registry.GetBuiltinVars(streamKey); ok {
+			for k, v := range builtinVars {
+				vars[k] = v
+			}
+		}
+		// If not found → stream offline → builtins unresolved → file won't exist → 404
 	}
 
 	// Get the storage path
