@@ -141,6 +141,9 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		}
 		
 		// delete_after_encoding is valid for video_unencoded streams (no validation needed, bool defaults to false)
+		if stream.Record.Enabled {
+			return fmt.Errorf("%s of type video_unencoded should not have record enabled (only live streams support recording)", context)
+		}
 	} else if stream.Type == string(models.StreamTypeLive) {
 		// Validate live stream specific fields
 		if stream.LiveStreamKey == "" {
@@ -156,9 +159,20 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		if stream.DeleteAfterEncoding {
 			return fmt.Errorf("%s of type live should not have delete_after_encoding enabled", context)
 		}
+		// Validate record settings
+		if stream.Record.Enabled {
+			if stream.Record.Path == "" {
+				return fmt.Errorf("%s has record enabled but record path is empty", context)
+			}
+			if err := y.validatePath(stream.Record.Path, fmt.Sprintf("%s record path", context)); err != nil {
+				return err
+			}
+		}
 	} else {
 		// For video_encoded streams, these fields should not be set
-		
+		if stream.Record.Enabled {
+			return fmt.Errorf("%s of type %s should not have record enabled (only live streams support recording)", context, stream.Type)
+		}
 	}
 
 	// Validate qualities
@@ -218,6 +232,10 @@ func (y *YamlConfigFile) validateDistribution(distribution yamlConfigFileEntitie
 	// Validate HLS settings
 	if distribution.Hls.SegmentDuration <= 0 {
 		return fmt.Errorf("%s has invalid HLS segment_duration: must be greater than 0", context)
+	}
+
+	if distribution.Hls.WindowSize < 0 {
+		return fmt.Errorf("%s has invalid HLS window_size: must be 0 or greater (0 uses default of 3)", context)
 	}
 
 	return nil

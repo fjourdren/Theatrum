@@ -29,7 +29,7 @@ func (sm *Manager) SetContext(ctx context.Context) {
 }
 
 // GetOrCreateStream gets an existing stream or creates a new one
-func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream *models.Stream) (*StreamProcess, error) {
+func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream *models.Stream, resolvedRecordPath string) (*StreamProcess, error) {
 	// Try to get existing stream
 	if existing, ok := sm.streams.Load(inputPath); ok {
 		if sp := existing.(*StreamProcess); sp.active.Load() {
@@ -40,7 +40,7 @@ func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream 
 	}
 
 	// Create new stream
-	sp, err := sm.createNewStream(inputPath, outputDir, stream)
+	sp, err := sm.createNewStream(inputPath, outputDir, stream, resolvedRecordPath)
 	if err != nil {
 		return nil, err
 	}
@@ -51,13 +51,13 @@ func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream 
 
 // createNewStream creates a new FFmpeg process for a streamer
 // The outputDir is built by the RtmpAuthService using PathTemplateService
-func (sm *Manager) createNewStream(inputPath string, outputDir string, stream *models.Stream) (*StreamProcess, error) {
+func (sm *Manager) createNewStream(inputPath string, outputDir string, streamConfig *models.Stream, resolvedRecordPath string) (*StreamProcess, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := createFFmpegCommand(ctx, outputDir, stream)
+	cmd := createFFmpegCommand(ctx, outputDir, streamConfig)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
@@ -70,20 +70,24 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, stream *m
 		return nil, fmt.Errorf("failed to start FFmpeg: %v", err)
 	}
 
-	stream := &StreamProcess{
-		cmd:       cmd,
-		stdin:     stdin,
-		cancel:    cancel,
-		inputPath: inputPath,
-		outputDir: outputDir,
+	sp := &StreamProcess{
+		cmd:                cmd,
+		stdin:              stdin,
+		cancel:             cancel,
+		inputPath:          inputPath,
+		outputDir:          outputDir,
+		record:             streamConfig.Record,
+		resolvedRecordPath: resolvedRecordPath,
+		segmentDuration:    streamConfig.Distribution.Hls.SegmentDuration,
+		multiQuality:       len(streamConfig.Qualities) > 0,
 	}
-	stream.active.Store(true)
+	sp.active.Store(true)
 
 	// Start monitoring goroutine
-	go stream.monitor(sm)
+	go sp.monitor(sm)
 
 	log.Printf("Started new stream for : %s", inputPath)
-	return stream, nil
+	return sp, nil
 }
 
 // GetActiveStreams returns a list of usernames for all active streams

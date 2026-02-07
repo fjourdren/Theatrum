@@ -27,6 +27,12 @@ type Stream struct {
 	// Specific fields for live streams
 	LiveStreamKey     string
 	AuthTokenTemplate string // Template for XOR auth input, uses {var} placeholders
+	Record            Record // Recording settings (live streams only)
+}
+
+type Record struct {
+	Enabled bool
+	Path    string
 }
 
 func (s *Stream) GetMasterPlaylistTemplatePath() string {

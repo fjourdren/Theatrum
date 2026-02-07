@@ -17,6 +17,7 @@ A powerful and flexible streaming server that supports video on demand (VOD) and
   - Passthrough mode (codec copy, lowest latency)
   - Multi-quality transcoding (adaptive bitrate for viewers)
   - XOR-based stream key authentication
+  - Optional recording with VOD playlist generation
 
 - 🎯 **Quality Profiles**
   - Multi-qualities management
@@ -120,6 +121,7 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 2
+          window_size: 3       # Segments in live playlist (default: 3)
 
   # Multi-quality transcoding
   live_multiquality:
@@ -135,6 +137,7 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 2
+          window_size: 5
 ```
 
 **Output directory structure:**
@@ -205,12 +208,14 @@ delete_after_encoding: false  # Default: false
 
 ### Stream Distribution
 HLS configuration includes:
-- Segment duration: 6 seconds
+- Segment duration: configurable per stream
+- Window size: number of segments in the live playlist (default: 3, live streams only)
 
 ```yaml
 distribution:
   hls:
     segment_duration: 6
+    window_size: 5       # Live streams only (default: 3)
 ```
 
 ### Channel Endpoints
@@ -358,7 +363,33 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 2
+          window_size: 5
 ```
+
+### Live Stream with Recording
+When recording is enabled, all segments are kept on disk during the stream (while only the last `window_size` segments appear in the live playlist). When the stream ends, a VOD playlist is generated and all files are moved to `record.path`.
+
+```yaml
+stream_templates:
+  live_recorded:
+    stream:
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/{username}/{%STARTING_DATE%}"
+```
+
+- `record.enabled`: Set to `true` to enable recording (default: `false`)
+- `record.path`: Destination path for the recording. Supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values within the same stream session.
+- Without recording (default): old segments are deleted during streaming, and all remaining files are cleaned up when the stream ends.
+- With recording: all segments accumulate on disk, and a playable VOD playlist is generated on stream end.
 
 ## License
 

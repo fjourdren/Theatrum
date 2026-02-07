@@ -49,6 +49,11 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		qualities[key] = ToDomainQuality(quality)
 	}
 
+	windowSize := stream.Distribution.Hls.WindowSize
+	if windowSize <= 0 {
+		windowSize = 3
+	}
+
 	return models.Stream{
 		Type:      models.StreamType(stream.Type),
 		Path:      stream.Path,
@@ -56,6 +61,7 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		Distribution: models.Distribution{
 			Hls: models.Hls{
 				SegmentDuration: stream.Distribution.Hls.SegmentDuration,
+				WindowSize:      windowSize,
 			},
 		},
 
@@ -66,6 +72,10 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		// Specific fields for live streams
 		LiveStreamKey:     stream.LiveStreamKey,
 		AuthTokenTemplate: stream.AuthTokenTemplate,
+		Record: models.Record{
+			Enabled: stream.Record.Enabled,
+			Path:    stream.Record.Path,
+		},
 	}
 }
 

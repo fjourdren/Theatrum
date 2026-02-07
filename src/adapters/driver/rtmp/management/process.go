@@ -20,12 +20,16 @@ import (
 // LATER : move in another adapter
 // StreamProcess represents a single stream with its FFmpeg process
 type StreamProcess struct {
-	cmd       *exec.Cmd
-	stdin     io.WriteCloser
-	cancel    context.CancelFunc
-	inputPath string
-	outputDir string
-	active    atomic.Bool // atomic boolean for active state
+	cmd                *exec.Cmd
+	stdin              io.WriteCloser
+	cancel             context.CancelFunc
+	inputPath          string
+	outputDir          string
+	active             atomic.Bool // atomic boolean for active state
+	record             models.Record
+	resolvedRecordPath string
+	segmentDuration    int
+	multiQuality       bool
 }
 
 // createFFmpegCommand creates an FFmpeg command with the specified settings.
@@ -38,9 +42,18 @@ func createFFmpegCommand(ctx context.Context, outputDir string, stream *models.S
 	return createCopyCommand(ctx, outputDir, stream)
 }
 
+// hlsFlags returns the appropriate -hls_flags value based on recording mode.
+func hlsFlags(recording bool) string {
+	if recording {
+		return "temp_file+independent_segments"
+	}
+	return "delete_segments+temp_file+independent_segments"
+}
+
 // createCopyCommand creates an FFmpeg command that copies codecs without transcoding (passthrough).
 func createCopyCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
 	segmentDuration := fmt.Sprintf("%d", stream.Distribution.Hls.SegmentDuration)
+	windowSize := fmt.Sprintf("%d", stream.Distribution.Hls.WindowSize)
 
 	return exec.CommandContext(ctx, "ffmpeg",
 		"-re",
@@ -52,8 +65,8 @@ func createCopyCommand(ctx context.Context, outputDir string, stream *models.Str
 		"-c:a", "copy",
 		"-f", "hls",
 		"-hls_time", segmentDuration,
-		"-hls_list_size", "3",
-		"-hls_flags", "delete_segments+temp_file+independent_segments",
+		"-hls_list_size", windowSize,
+		"-hls_flags", hlsFlags(stream.Record.Enabled),
 		"-hls_segment_type", "mpegts",
 		"-hls_allow_cache", "0",
 		"-hls_segment_filename", filepath.Join(outputDir, constants.SegmentName),
@@ -64,6 +77,7 @@ func createCopyCommand(ctx context.Context, outputDir string, stream *models.Str
 // createMultiQualityCommand creates an FFmpeg command that transcodes into multiple quality levels.
 func createMultiQualityCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
 	segmentDuration := fmt.Sprintf("%d", stream.Distribution.Hls.SegmentDuration)
+	windowSize := fmt.Sprintf("%d", stream.Distribution.Hls.WindowSize)
 
 	args := []string{
 		"-re",
@@ -82,8 +96,8 @@ func createMultiQualityCommand(ctx context.Context, outputDir string, stream *mo
 	args = append(args,
 		"-f", "hls",
 		"-hls_time", segmentDuration,
-		"-hls_list_size", "3",
-		"-hls_flags", "delete_segments+temp_file+independent_segments",
+		"-hls_list_size", windowSize,
+		"-hls_flags", hlsFlags(stream.Record.Enabled),
 		"-hls_segment_type", "mpegts",
 		"-hls_allow_cache", "0",
 		"-var_stream_map", streamMap,
@@ -143,15 +157,83 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 		}
 	}
 
-	// Clean up the output directory
-	go func() {
-		time.Sleep(time.Duration(cfg.CleanupDelay) * time.Second)
-		if err := os.RemoveAll(sp.outputDir); err != nil {
-			log.Printf("Error cleaning up stream directory for: %s: %v", sp.inputPath, err)
-		} else {
-			log.Printf("Cleaned up stream directory for: %s", sp.inputPath)
+	if sp.record.Enabled && sp.resolvedRecordPath != "" {
+		go sp.saveRecording()
+	} else {
+		// Clean up the output directory
+		go func() {
+			time.Sleep(time.Duration(cfg.CleanupDelay) * time.Second)
+			if err := os.RemoveAll(sp.outputDir); err != nil {
+				log.Printf("Error cleaning up stream directory for: %s: %v", sp.inputPath, err)
+			} else {
+				log.Printf("Cleaned up stream directory for: %s", sp.inputPath)
+			}
+		}()
+	}
+}
+
+// saveRecording generates VOD playlists and moves files to the recording path.
+func (sp *StreamProcess) saveRecording() {
+	recordDir := sp.resolvedRecordPath
+
+	if sp.multiQuality {
+		// Generate per-quality VOD playlists
+		entries, err := os.ReadDir(sp.outputDir)
+		if err != nil {
+			log.Printf("Error reading output directory for recording: %s: %v", sp.outputDir, err)
+			return
 		}
-	}()
+		for _, entry := range entries {
+			if entry.IsDir() {
+				qualityDir := filepath.Join(sp.outputDir, entry.Name())
+				if err := generateVODPlaylist(qualityDir, sp.segmentDuration); err != nil {
+					log.Printf("Error generating VOD playlist for quality %s: %v", entry.Name(), err)
+				}
+			}
+		}
+		// Keep the master playlist as-is
+	} else {
+		// Generate single VOD playlist
+		if err := generateVODPlaylist(sp.outputDir, sp.segmentDuration); err != nil {
+			log.Printf("Error generating VOD playlist: %v", err)
+		}
+	}
+
+	// Create recording directory
+	if err := os.MkdirAll(recordDir, 0755); err != nil {
+		log.Printf("Error creating recording directory %s: %v", recordDir, err)
+		return
+	}
+
+	// Move files from outputDir to recordDir
+	if err := moveContents(sp.outputDir, recordDir); err != nil {
+		log.Printf("Error moving files to recording directory: %v", err)
+		return
+	}
+
+	// Remove original output directory
+	if err := os.RemoveAll(sp.outputDir); err != nil {
+		log.Printf("Error removing original stream directory: %s: %v", sp.outputDir, err)
+	}
+
+	log.Printf("Recording saved to: %s", recordDir)
+}
+
+// moveContents moves all files and directories from src to dst.
+func moveContents(src, dst string) error {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source directory: %w", err)
+	}
+
+	for _, entry := range entries {
+		srcPath := filepath.Join(src, entry.Name())
+		dstPath := filepath.Join(dst, entry.Name())
+		if err := os.Rename(srcPath, dstPath); err != nil {
+			return fmt.Errorf("failed to move %s to %s: %w", srcPath, dstPath, err)
+		}
+	}
+	return nil
 }
 
 // IsActive returns whether the stream is currently active

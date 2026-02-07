@@ -48,6 +48,7 @@ type Distribution struct {
 
 type Hls struct {
 	SegmentDuration int `yaml:"segment_duration"`
+	WindowSize      int `yaml:"window_size,omitempty"`
 }
 
 type Stream struct {
@@ -63,6 +64,12 @@ type Stream struct {
 	// Specific fields for live streams
 	LiveStreamKey     string `yaml:"live_stream_key"`
 	AuthTokenTemplate string `yaml:"auth_token_template"` // Template for XOR auth, e.g. "{username}" or "{room_id}{username}"
+	Record            Record `yaml:"record,omitempty"`
+}
+
+type Record struct {
+	Enabled bool   `yaml:"enabled,omitempty"`
+	Path    string `yaml:"path,omitempty"`
 }
 
 type StreamTemplate struct {

@@ -97,6 +97,7 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 2  # Lower for live streaming
+          window_size: 5       # Number of segments in the live playlist (default: 3)
 
   # Live stream with passthrough (no transcoding, lowest latency)
   live_passthrough:
@@ -108,6 +109,22 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 2
+          window_size: 3       # Number of segments in the live playlist (default: 3)
+
+  # Live stream with recording enabled
+  live_recorded:
+    stream: &live_recorded_config
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/{username}/{%STARTING_DATE%}"  # Same placeholders as stream path
 
 # ────────────────
 # All streams endpoints

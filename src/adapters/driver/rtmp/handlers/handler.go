@@ -146,8 +146,20 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 		localPath = filepath.Join(constants.VideoDir, streamPath, constants.DefaultQuality)
 	}
 
+	// Resolve record path if recording is enabled
+	var resolvedRecordPath string
+	if connInfo.Stream.Record.Enabled && connInfo.Stream.Record.Path != "" {
+		recordPath, err := h.templateService.ReplacePlaceholders(connInfo.Stream.Record.Path, mergedVars)
+		if err != nil {
+			log.Printf("Failed to build record path: %v", err)
+			return fmt.Errorf("failed to build record path: %w", err)
+		}
+		resolvedRecordPath = filepath.Join(constants.VideoDir, recordPath)
+		log.Printf("Recording path: %s", resolvedRecordPath)
+	}
+
 	log.Printf("Stream output path: %s", localPath)
-	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream)
+	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream, resolvedRecordPath)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
 		return err

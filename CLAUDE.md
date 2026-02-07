@@ -56,7 +56,7 @@ RTMP Server (port 1935)
     ↓
 Handler.OnConnect() - Validates TCURL against channel patterns
     ↓
-Handler.OnPublish() - XOR token authentication
+Handler.OnPublish() - XOR token authentication, resolves record path
     ↓
 StreamManager.GetOrCreateStream() - Creates/reuses FFmpeg process
     ↓
@@ -67,6 +67,8 @@ FFmpeg (stdin pipe) - Converts FLV to HLS (passthrough or multi-quality)
 HLS output (single playlist or master + per-quality playlists)
     ↓
 HTTP Server (port 8080) - Serves HLS to viewers
+    ↓
+On stream end: cleanup (delete files) or recording (generate VOD playlist + move to record path)
 ```
 
 ### Authentication
@@ -103,6 +105,7 @@ channels:
       distribution:
         hls:
           segment_duration: 2
+          window_size: 3     # Segments in live playlist (default: 3)
 
   # Multi-quality transcoding (adaptive bitrate, requires CPU)
   "/premium/{username}":
@@ -118,11 +121,39 @@ channels:
       distribution:
         hls:
           segment_duration: 2
+          window_size: 5
+
+  # Live stream with recording
+  "/recorded/{username}":
+    stream:
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/{username}/{%STARTING_DATE%}"
 ```
 
 **Live stream modes:**
 - **Without `qualities`** (passthrough): codec copy, single playlist at `{path}/default/playlist.m3u8`
 - **With `qualities`** (transcoding): multi-quality HLS with `master.m3u8` + per-quality subdirs (`low/`, `medium/`, `high/`), uses `-preset veryfast -tune zerolatency` for real-time encoding
+
+### Recording
+
+Live streams can optionally be recorded. When `record.enabled` is `true`:
+- **During stream**: All segments are kept on disk (no deletion), but only the last `window_size` segments appear in the live playlist
+- **On stream end**: A VOD playlist is generated from all segments, and files are moved to `record.path`
+
+When recording is disabled (default):
+- **During stream**: Sliding window with only the last `window_size` segments on disk
+- **On stream end**: All remaining files are deleted after `cleanup_delay`
+
+`record.path` supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values as the stream's path within the same session.
 
 ### Path Template System
 
