@@ -159,6 +159,8 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 
 	if sp.record.Enabled && sp.resolvedRecordPath != "" {
 		go sp.saveRecording()
+	} else if sp.record.Enabled {
+		go sp.saveInPlace()
 	} else {
 		// Clean up the output directory
 		go func() {
@@ -217,6 +219,31 @@ func (sp *StreamProcess) saveRecording() {
 	}
 
 	log.Printf("Recording saved to: %s", recordDir)
+}
+
+// saveInPlace generates VOD playlists in the output directory without moving files.
+func (sp *StreamProcess) saveInPlace() {
+	if sp.multiQuality {
+		entries, err := os.ReadDir(sp.outputDir)
+		if err != nil {
+			log.Printf("Error reading output directory for in-place recording: %s: %v", sp.outputDir, err)
+			return
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				qualityDir := filepath.Join(sp.outputDir, entry.Name())
+				if err := generateVODPlaylist(qualityDir, sp.segmentDuration); err != nil {
+					log.Printf("Error generating VOD playlist for quality %s: %v", entry.Name(), err)
+				}
+			}
+		}
+	} else {
+		if err := generateVODPlaylist(sp.outputDir, sp.segmentDuration); err != nil {
+			log.Printf("Error generating VOD playlist: %v", err)
+		}
+	}
+
+	log.Printf("In-place recording saved at: %s", sp.outputDir)
 }
 
 // moveContents moves all files and directories from src to dst.

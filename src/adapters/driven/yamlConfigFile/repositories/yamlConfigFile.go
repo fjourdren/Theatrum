@@ -160,10 +160,7 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 			return fmt.Errorf("%s of type live should not have delete_after_encoding enabled", context)
 		}
 		// Validate record settings
-		if stream.Record.Enabled {
-			if stream.Record.Path == "" {
-				return fmt.Errorf("%s has record enabled but record path is empty", context)
-			}
+		if stream.Record.Enabled && stream.Record.Path != "" {
 			if err := y.validatePath(stream.Record.Path, fmt.Sprintf("%s record path", context)); err != nil {
 				return err
 			}
