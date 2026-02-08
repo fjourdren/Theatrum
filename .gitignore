@@ -41,10 +41,14 @@ data/
 .env.*.local
 
 # Build output
-build/ 
+build/
+main
 
 # Config files
 config.yml
 
 # Temp test files
 /cmd/
+
+# AI
+.claude/

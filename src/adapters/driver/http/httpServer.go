@@ -1,4 +1,4 @@
-package servers
+package http
 
 import (
 	"context"
@@ -17,17 +17,21 @@ import (
 // HttpServer implements the HttpPort interface
 type HttpServer struct {
 	applicationService *services.ApplicationService
-	streamService     *services.StreamService
-	server            *http.Server
+	streamService      *services.StreamService
+	templateService    *services.PathTemplateService
+	registry           *services.LiveStreamRegistry
+	server             *http.Server
 }
 
 // Verify interface implementation
 var _ ports.HttpPort = (*HttpServer)(nil)
 
-func NewHttpServer(applicationService *services.ApplicationService, streamService *services.StreamService) ports.HttpPort {
+func NewHttpServer(applicationService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.HttpPort {
 	return &HttpServer{
 		applicationService: applicationService,
-		streamService:     streamService,
+		streamService:      streamService,
+		templateService:    templateService,
+		registry:           registry,
 	}
 }
 
@@ -51,17 +55,14 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		// Create a subrouter for this channel
 		channelRouter := r.PathPrefix(path).Subrouter()
 		// Create the stream handler
-		handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService)
+		handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry)
 		
-		if len(channel.Qualities) != 0 { // If there is a quality, then we need to handle quality-specific paths
-			// Handle quality-specific paths
-			channelRouter.Handle("/{quality}/{resource:.*}", handler).Methods("GET")
-			// Handle master playlist
-			channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
-		} else { // If there is no quality, then we need to handle simple paths ("default" quality in the storage path)
-			// Handle simple paths without quality
-			channelRouter.Handle("/{resource:.*}", handler).Methods("GET")
-		}
+		// Handle master playlist
+		channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
+		// Handle quality-specific paths (e.g., /low/playlist.m3u8, /default/playlist.m3u8)
+		channelRouter.Handle("/{quality}/{resource:.*}", handler).Methods("GET")
+		// Handle simple paths without quality prefix (backward compat)
+		channelRouter.Handle("/{resource:.*}", handler).Methods("GET")
 	}
 
 	// Serve frontend for any other routes

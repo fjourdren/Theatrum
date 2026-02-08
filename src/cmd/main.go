@@ -11,10 +11,12 @@ import (
 	ffmpegEncoderRepository "Theatrum/adapters/driven/ffmpegEncoder/repositories"
 	fileAccessRepository "Theatrum/adapters/driven/fileAccess/repositories"
 	yamlConfigFileRepository "Theatrum/adapters/driven/yamlConfigFile/repositories"
+	httpAdapter "Theatrum/adapters/driver/http"
+	"Theatrum/adapters/driver/ports"
+	rtmpAdapter "Theatrum/adapters/driver/rtmp"
 	"Theatrum/domain/jobs"
 	"Theatrum/domain/repositories"
 	"Theatrum/domain/services"
-	"Theatrum/servers"
 
 	"go.uber.org/dig"
 )
@@ -51,8 +53,14 @@ func main() {
 		return services.NewApplicationService(application, server, channels, storage, templateService), nil
 	})
 	container.Provide(services.NewPathTemplateService)
+	container.Provide(services.NewLiveStreamRegistry)
 	container.Provide(services.NewStreamService)
 	container.Provide(services.NewEncodeService)
+
+	// Provide RTMP authentication service
+	container.Provide(func(appService *services.ApplicationService, templateService *services.PathTemplateService) *services.RtmpAuthService {
+		return services.NewRtmpAuthService(appService.GetChannels(), templateService)
+	})
 
 	// Provide job queue
 	container.Provide(func(encodeService *services.EncodeService, storage repositories.StoragePort) *jobs.EncodeJobQueue {
@@ -69,12 +77,24 @@ func main() {
 		return jobs.NewVideoUnencodedDetector(appService, encodeQueue, storage, templateService)
 	})
 
+	// Provide HTTP server
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.HttpPort {
+		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry)
+	})
+
+	// Provide RTMP server
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry)
+	})
+
 	// Start the application and jobs
 	err := container.Invoke(func(
 		appService *services.ApplicationService,
 		streamService *services.StreamService,
 		encodeQueue *jobs.EncodeJobQueue,
 		videoDetector *jobs.VideoUnencodedDetector,
+		httpServer ports.HttpPort,
+		rtmpServer ports.RtmpPort,
 	) {
 		// Start the encode queue
 		encodeQueue.Start()
@@ -91,14 +111,19 @@ func main() {
 		}()
 
 		// Start HTTP server
-		httpServer := servers.NewHttpServer(appService, streamService)
-		
-		// Create a channel to listen for errors coming from the server
 		serverErrors := make(chan error, 1)
 
 		// Start the server in a goroutine
 		go func() {
 			serverErrors <- httpServer.StartHttpServer()
+		}()
+
+		// Start RTMP server
+		rtmpErrors := make(chan error, 1)
+
+		// Start the RTMP server in a goroutine
+		go func() {
+			rtmpErrors <- rtmpServer.StartRtmpServer()
 		}()
 
 		// Listen for an interrupt or terminate signal from the OS
@@ -109,6 +134,8 @@ func main() {
 		select {
 			case err := <-serverErrors:
 				log.Printf("Error starting server: %v", err)
+			case err := <-rtmpErrors:
+				log.Printf("Error starting RTMP server: %v", err)
 			case sig := <-osSignals:
 				log.Printf("Received signal: %v", sig)
 			case <-ctx.Done():
@@ -122,6 +149,10 @@ func main() {
 		// Attempt graceful shutdown
 		if err := httpServer.Shutdown(shutdownCtx); err != nil {
 			log.Printf("Error during server shutdown: %v", err)
+		}
+
+		if err := rtmpServer.ShutdownRtmpServer(); err != nil {
+			log.Printf("Error during RTMP server shutdown: %v", err)
 		}
 	})
 

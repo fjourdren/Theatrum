@@ -18,7 +18,14 @@ type AllStreamsPlaylist struct {
 }
 
 type Server struct {
-	HTTPPort int `yaml:"http"`
+	HTTPPort int  `yaml:"http"`
+	RTMPPort int  `yaml:"rtmp"`
+	RTMP     RTMP `yaml:"rtmp_config,omitempty"`
+}
+
+type RTMP struct {
+	ReconnectDelay int `yaml:"reconnect_delay,omitempty"` // Seconds to wait before cleaning up disconnected stream (default: 30)
+	CleanupDelay   int `yaml:"cleanup_delay,omitempty"`   // Seconds to wait before removing stream files (default: 30)
 }
 
 type Audio struct {
@@ -41,17 +48,28 @@ type Distribution struct {
 
 type Hls struct {
 	SegmentDuration int `yaml:"segment_duration"`
+	WindowSize      int `yaml:"window_size,omitempty"`
 }
 
 type Stream struct {
 	Type         string             `yaml:"type"`
 	Path         string             `yaml:"path"`
-	Qualities    map[string]Quality `yaml:"qualities"`
+	Qualities    map[string]Quality `yaml:"qualities,omitempty"`
 	Distribution Distribution       `yaml:"distribution"`
 
 	// Specific fields for video unencoded streams
 	VideoInputPath      string `yaml:"video_input_path"`
 	DeleteAfterEncoding bool   `yaml:"delete_after_encoding,omitempty"` // If enabled, delete the source file after video encoding (default: false)
+
+	// Specific fields for live streams
+	LiveStreamKey     string `yaml:"live_stream_key"`
+	AuthTokenTemplate string `yaml:"auth_token_template"` // Template for XOR auth, e.g. "{username}" or "{room_id}{username}"
+	Record            Record `yaml:"record,omitempty"`
+}
+
+type Record struct {
+	Enabled bool   `yaml:"enabled,omitempty"`
+	Path    string `yaml:"path,omitempty"`
 }
 
 type StreamTemplate struct {

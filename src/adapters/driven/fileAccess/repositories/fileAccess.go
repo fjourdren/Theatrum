@@ -119,7 +119,7 @@ func main() {
 	}
 }
 */
-// TODO : make it able to manage filename directly in the pattern
+// LATER : make it able to manage filename directly in the pattern
 func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string, []map[string]string, error) {
 	// Validate pattern to prevent path traversal
 	if err := validatePattern(pattern); err != nil {
@@ -284,7 +284,7 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 	return paths, vars, nil
 }
 
-// TODO : centralize security checks
+// LATER : centralize security checks
 // validatePattern performs security checks on the pattern to prevent path traversal attacks
 func validatePattern(pattern string) error {
 	// Check for path traversal attempts
@@ -305,7 +305,7 @@ func validatePattern(pattern string) error {
 		}
 	}
 
-	// TODO : centralize security checks
+	// LATER : centralize security checks
 	// Check for any other potentially dangerous characters
 	dangerousChars := []string{"%00", "%2e", "%2f", "%5c", "~", "|", ">", "<", "*", "?"}
 	for _, char := range dangerousChars {

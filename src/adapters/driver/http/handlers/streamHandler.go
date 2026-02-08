@@ -14,16 +14,20 @@ import (
 )
 
 type StreamHandler struct {
-	stream *models.Stream
-	streamService *services.StreamService
+	stream             *models.Stream
+	streamService      *services.StreamService
 	applicationService *services.ApplicationService
+	templateService    *services.PathTemplateService
+	registry           *services.LiveStreamRegistry
 }
 
-func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService) *StreamHandler {
+func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) *StreamHandler {
 	return &StreamHandler{
-		stream: stream,
-		streamService: streamService,
+		stream:             stream,
+		streamService:      streamService,
 		applicationService: applicationService,
+		templateService:    templateService,
+		registry:           registry,
 	}
 }
 
@@ -55,20 +59,42 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", mimeType)
 	}
 
-	// TODO : put in stream config the cache control headers
-	// Set cache control headers based on file type
+	// Set cache control headers based on stream type and file type
+	isLive := h.stream.Type == models.StreamTypeLive
 	switch ext {
-	case ".m3u8": // Master playlist and sub-playlists
-		// Cache playlists for a shorter time since they are updated frequently
-		w.Header().Set("Cache-Control", "public, max-age=600") // 10 minutes cache
-	case ".ts": // Video segments
-		// Cache video segments for a longer time since they don't change
-		w.Header().Set("Cache-Control", "public, max-age=86400") // 24 hours cache
+	case ".m3u8":
+		if isLive {
+			// Live playlists update every segment, must not be cached
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		} else {
+			// VOD playlists are stable
+			w.Header().Set("Cache-Control", "public, max-age=600")
+		}
+	case ".ts":
+		if isLive {
+			// Live segments are short-lived
+			w.Header().Set("Cache-Control", "public, max-age=10")
+		} else {
+			// VOD segments don't change
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
 	default:
-		// For other files, use no cache
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
 		w.Header().Set("Expires", "0")
+	}
+
+	// For live streams, look up pre-resolved builtin vars from the registry
+	if h.stream.Type == models.StreamTypeLive {
+		// Compute stream key (same formula as RTMP side: resolve user vars only)
+		streamKey, _ := h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+
+		if builtinVars, ok := h.registry.GetBuiltinVars(streamKey); ok {
+			for k, v := range builtinVars {
+				vars[k] = v
+			}
+		}
+		// If not found → stream offline → builtins unresolved → file won't exist → 404
 	}
 
 	// Get the storage path

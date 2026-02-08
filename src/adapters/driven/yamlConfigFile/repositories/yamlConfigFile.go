@@ -3,6 +3,7 @@ package repositories
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -65,6 +66,10 @@ func (y *YamlConfigFile) validateConfig(config *yamlConfigFileEntities.Config) e
 		return fmt.Errorf("invalid HTTP port: must be greater than 0")
 	}
 
+	if config.Server.RTMPPort <= 0 {
+		return fmt.Errorf("invalid RTMP port: must be greater than 0")
+	}
+
 	// Validate stream templates after inheritance resolution
 	for name, template := range config.StreamTemplates {
 		// Check that name never = "/"
@@ -89,12 +94,19 @@ func (y *YamlConfigFile) validateConfig(config *yamlConfigFileEntities.Config) e
 		if err := y.validateStream(channel.Stream, fmt.Sprintf("channel '%s'", name)); err != nil {
 			return err
 		}
+
+		// Live streams require auth_token_template variables to exist in channel pattern
+		if channel.Stream.Type == string(models.StreamTypeLive) {
+			if err := y.validateAuthTokenTemplate(name, channel.Stream); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
 }
 
-// TODO : move in domain
+// LATER : move in domain
 func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, context string) error {
 
 	if stream.Type == "" {
@@ -102,7 +114,9 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 	}
 
 	// get stream type from StreamTypeVideoEncoded
-	if stream.Type != string(models.StreamTypeVideoEncoded) && stream.Type != string(models.StreamTypeVideoUnEncoded) {
+	if stream.Type != string(models.StreamTypeVideoEncoded) && 
+	   stream.Type != string(models.StreamTypeVideoUnEncoded) && 
+	   stream.Type != string(models.StreamTypeLive) {
 		return fmt.Errorf("%s has invalid type: %s", context, stream.Type)
 	}
 
@@ -127,18 +141,40 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		}
 		
 		// delete_after_encoding is valid for video_unencoded streams (no validation needed, bool defaults to false)
-	} else {
-		// For video_encoded streams, these fields should not be set
+		if stream.Record.Enabled {
+			return fmt.Errorf("%s of type video_unencoded should not have record enabled (only live streams support recording)", context)
+		}
+	} else if stream.Type == string(models.StreamTypeLive) {
+		// Validate live stream specific fields
+		if stream.LiveStreamKey == "" {
+			return fmt.Errorf("%s of type live must have live_stream_key", context)
+		}
+		if stream.AuthTokenTemplate == "" {
+			return fmt.Errorf("%s of type live must have auth_token_template", context)
+		}
+		// For live streams, these fields should not be set
 		if stream.VideoInputPath != "" {
-			return fmt.Errorf("%s of type video_encoded should not have video_input_path", context)
+			return fmt.Errorf("%s of type live should not have video_input_path", context)
 		}
 		if stream.DeleteAfterEncoding {
-			return fmt.Errorf("%s of type video_encoded should not have delete_after_encoding enabled", context)
+			return fmt.Errorf("%s of type live should not have delete_after_encoding enabled", context)
+		}
+		// Validate record settings
+		if stream.Record.Enabled && stream.Record.Path != "" {
+			if err := y.validatePath(stream.Record.Path, fmt.Sprintf("%s record path", context)); err != nil {
+				return err
+			}
+		}
+	} else {
+		// For video_encoded streams, these fields should not be set
+		if stream.Record.Enabled {
+			return fmt.Errorf("%s of type %s should not have record enabled (only live streams support recording)", context, stream.Type)
 		}
 	}
 
 	// Validate qualities
-	if len(stream.Qualities) == 0 {
+	// TODO : make qualities optional for some types of streams
+	if stream.Type != string(models.StreamTypeLive) && len(stream.Qualities) == 0 {
 		return fmt.Errorf("%s has no quality profiles defined", context)
 	}
 
@@ -193,6 +229,31 @@ func (y *YamlConfigFile) validateDistribution(distribution yamlConfigFileEntitie
 	// Validate HLS settings
 	if distribution.Hls.SegmentDuration <= 0 {
 		return fmt.Errorf("%s has invalid HLS segment_duration: must be greater than 0", context)
+	}
+
+	if distribution.Hls.WindowSize < 0 {
+		return fmt.Errorf("%s has invalid HLS window_size: must be 0 or greater (0 uses default of 3)", context)
+	}
+
+	return nil
+}
+
+func (y *YamlConfigFile) validateAuthTokenTemplate(channelName string, stream yamlConfigFileEntities.Stream) error {
+	// Extract variable names from template
+	varRegex := regexp.MustCompile(`\{([a-zA-Z0-9_]+)\}`)
+	templateVars := varRegex.FindAllStringSubmatch(stream.AuthTokenTemplate, -1)
+
+	if len(templateVars) == 0 {
+		return fmt.Errorf("channel '%s': auth_token_template must contain at least one {variable}", channelName)
+	}
+
+	// Verify each template variable exists in channel pattern
+	for _, match := range templateVars {
+		varName := match[1]
+		varPlaceholder := "{" + varName + "}"
+		if !strings.Contains(channelName, varPlaceholder) {
+			return fmt.Errorf("channel '%s': auth_token_template references {%s} but channel pattern doesn't contain it", channelName, varName)
+		}
 	}
 
 	return nil

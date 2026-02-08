@@ -3,7 +3,7 @@
 ![](imgs/logo.png)
 
 
-A powerful and flexible streaming server that supports video on demand (VOD) with adaptive bitrate streaming capabilities. Built to handle multiple quality profiles and HLS protocol.
+A powerful and flexible streaming server that supports video on demand (VOD) and live RTMP streaming with adaptive bitrate capabilities. Built to handle multiple quality profiles and HLS protocol.
 
 ## Features
 
@@ -12,9 +12,17 @@ A powerful and flexible streaming server that supports video on demand (VOD) wit
   - Automatic mp4 encoding
   - Optional source file deletion after encoding
 
+- 📡 **Live Streaming**
+  - RTMP ingest (OBS, FFmpeg, etc.)
+  - Passthrough mode (codec copy, lowest latency)
+  - Multi-quality transcoding (adaptive bitrate for viewers)
+  - XOR-based stream key authentication
+  - Optional recording with VOD playlist generation
+
 - 🎯 **Quality Profiles**
   - Multi-qualities management
   - Customizable audio and video bitrates
+  - Shared quality profiles between VOD and live
 
 - 🔄 **Streaming Protocols**
   - HLS (HTTP Live Streaming)
@@ -94,6 +102,98 @@ stream_templates:
           manifest_window: 5
 ```
 
+#### live
+
+Live streams support two modes:
+
+- **Passthrough** (no `qualities`): codec copy, no transcoding, lowest latency. Outputs a single HLS playlist.
+- **Multi-quality** (with `qualities`): real-time transcoding into multiple quality levels with adaptive bitrate. Outputs a master playlist (`master.m3u8`) referencing per-quality playlists. Uses `-preset veryfast -tune zerolatency` for real-time encoding.
+
+```yaml
+stream_templates:
+  # Passthrough mode (no transcoding)
+  live_passthrough:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3       # Segments in live playlist (default: 3)
+
+  # Multi-quality transcoding
+  live_multiquality:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:        # Optional: add qualities to enable transcoding
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+```
+
+**Output directory structure:**
+```
+# Passthrough (no qualities)
+data/live/myuser/default/
+  playlist.m3u8 + segment_*.ts
+
+# Multi-quality (with qualities)
+data/live/myuser/
+  master.m3u8
+  low/playlist.m3u8 + segment_*.ts
+  medium/playlist.m3u8 + segment_*.ts
+  high/playlist.m3u8 + segment_*.ts
+```
+
+For live streams, authentication is required using configurable XOR-based tokens.
+
+**Required fields for live streams:**
+- `live_stream_key` - Secret key used for XOR operation
+- `auth_token_template` - Template specifying which URL variables to use for authentication
+
+**How authentication works:**
+
+1. Server extracts variables from the RTMP URL based on the channel pattern
+2. Server builds the XOR input by replacing `{var}` placeholders in `auth_token_template` with URL values
+3. Server XORs the input with `live_stream_key` and hex-encodes the result
+4. Client must provide this token as the stream key
+5. Streaming is allowed only if the tokens match
+
+**Simple example** (single variable):
+```yaml
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      auth_token_template: "{username}"
+      live_stream_key: "secret"
+```
+- RTMP URL: `rtmp://server/user/alice`
+- Stream key: `hex(XOR("alice", "secret"))`
+
+**Advanced example** (multiple variables):
+```yaml
+channels:
+  "/room/{room_id}/user/{username}":
+    stream:
+      type: live
+      auth_token_template: "{room_id}{username}"
+      live_stream_key: "secret"
+```
+- RTMP URL: `rtmp://server/room/42/user/alice`
+- Stream key: `hex(XOR("42alice", "secret"))`
+
+> **Note:** All variables in `auth_token_template` must exist in the channel pattern, otherwise configuration validation will fail at startup.
+
 ### Source File Management (video_unencoded only)
 For `video_unencoded` streams, you can configure automatic deletion of source files after successful encoding:
 
@@ -108,12 +208,14 @@ delete_after_encoding: false  # Default: false
 
 ### Stream Distribution
 HLS configuration includes:
-- Segment duration: 6 seconds
+- Segment duration: configurable per stream
+- Window size: number of segments in the live playlist (default: 3, live streams only)
 
 ```yaml
 distribution:
   hls:
     segment_duration: 6
+    window_size: 5       # Live streams only (default: 3)
 ```
 
 ### Channel Endpoints
@@ -126,6 +228,29 @@ channels:
     stream:
       <<: *default_stream_config
 ```
+
+### Built-in Template Functions
+
+In addition to user variables extracted from URL patterns (`{username}`, `{room_id}`, etc.), path templates support **built-in functions** using the `{%FUNC%}` syntax. These generate values automatically at resolution time.
+
+**Available functions:**
+
+| Function | Description | Example output |
+|----------|-------------|----------------|
+| `{%STARTING_DATE%}` | Current date and time | `2026-02-07_15-30-00` |
+| `{%UUID%}` | Random UUID v4 | `550e8400-e29b-41d4-a716-446655440000` |
+
+**Example:**
+```yaml
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "livestreams/{username}/{%STARTING_DATE%}"
+      # Resolves to: livestreams/alice/2026-02-07_15-30-00
+```
+
+Built-in functions can be mixed freely with user variables in any path template.
 
 ## Getting Started
 
@@ -208,9 +333,90 @@ stream_templates:
           segment_duration: 4
 ```
 
+### Live Stream (Passthrough)
+```yaml
+stream_templates:
+  live_passthrough:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+```
+
+### Live Stream (Multi-Quality)
+```yaml
+stream_templates:
+  live_multiquality:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+```
+
+### Live Stream with Recording
+When recording is enabled, all segments are kept on disk during the stream (while only the last `window_size` segments appear in the live playlist). When the stream ends, a VOD playlist is generated.
+
+Recording supports two modes: files can be **moved** to a separate `record.path`, or kept **in-place** in `stream.path`.
+
+```yaml
+stream_templates:
+  # Recording with separate destination
+  live_recorded:
+    stream:
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/{username}/{%STARTING_DATE%}"
+
+  # In-place recording (files stay in stream.path)
+  live_recorded_inplace:
+    stream:
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        # No path = files stay in stream.path after stream ends
+```
+
+- `record.enabled`: Set to `true` to enable recording (default: `false`)
+- `record.path` (optional): Destination path for the recording. Supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values within the same stream session. When omitted, files remain in `stream.path` (in-place recording).
+- Without recording (default): old segments are deleted during streaming, and all remaining files are cleaned up when the stream ends.
+- With recording + `record.path`: all segments accumulate on disk, a VOD playlist is generated, and files are moved to `record.path`.
+- With recording, no `record.path`: all segments accumulate on disk, a VOD playlist is generated in-place, and files stay in `stream.path`.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Third-Party Licenses
+
+- go-rtmp (https://github.com/yutopp/go-rtmp) — © 2018-2025 Yusuke Topp — Boost Software License 1.0 (BSL-1.0)
 
 ## Contributing
 

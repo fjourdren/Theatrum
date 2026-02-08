@@ -6,7 +6,11 @@ application:
 
 # Server's ports
 server:
-  http: 8080 # Used by HLS
+  http: 8080 # Also used by HLS
+  rtmp: 1935
+  rtmp_config:
+    reconnect_delay: 30  # Seconds to wait before cleaning up disconnected stream
+    cleanup_delay: 30    # Seconds to wait before removing stream files
 
 # ────────────────
 # Quality profiles
@@ -79,6 +83,48 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
+  # Live stream with multi-quality transcoding (requires CPU for real-time encoding)
+  live:
+    stream: &live_stream_config
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"  # Secret key for XOR authentication
+      auth_token_template: "{username}"               # Template for XOR input (uses URL variables)
+      qualities:                                       # Optional: omit for passthrough (codec copy)
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2  # Lower for live streaming
+          window_size: 5       # Number of segments in the live playlist (default: 3)
+
+  # Live stream with passthrough (no transcoding, lowest latency)
+  live_passthrough:
+    stream: &live_passthrough_config
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3       # Number of segments in the live playlist (default: 3)
+
+  # Live stream with recording enabled
+  live_recorded:
+    stream: &live_recorded_config
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/{username}/{%STARTING_DATE%}"  # Same placeholders as stream path
 
 # ────────────────
 # All streams endpoints
@@ -92,3 +138,6 @@ channels:
   "/video/{username}":
     stream:
       <<: *video_unencoded_config
+  "/live/{username}":
+    stream:
+      <<: *live_stream_config

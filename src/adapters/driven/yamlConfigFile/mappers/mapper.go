@@ -7,8 +7,23 @@ import (
 
 // ToDomainServer converts a YAML server configuration to a domain server model
 func ToDomainServer(server entities.Server) models.Server {
+	// Set default values for RTMP config
+	reconnectDelay := server.RTMP.ReconnectDelay
+	if reconnectDelay <= 0 {
+		reconnectDelay = 30
+	}
+	cleanupDelay := server.RTMP.CleanupDelay
+	if cleanupDelay <= 0 {
+		cleanupDelay = 30
+	}
+
 	return models.Server{
 		HTTPPort: server.HTTPPort,
+		RTMPPort: server.RTMPPort,
+		RTMP: models.RTMP{
+			ReconnectDelay: reconnectDelay,
+			CleanupDelay:   cleanupDelay,
+		},
 	}
 }
 
@@ -34,6 +49,11 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		qualities[key] = ToDomainQuality(quality)
 	}
 
+	windowSize := stream.Distribution.Hls.WindowSize
+	if windowSize <= 0 {
+		windowSize = 3
+	}
+
 	return models.Stream{
 		Type:      models.StreamType(stream.Type),
 		Path:      stream.Path,
@@ -41,12 +61,21 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		Distribution: models.Distribution{
 			Hls: models.Hls{
 				SegmentDuration: stream.Distribution.Hls.SegmentDuration,
+				WindowSize:      windowSize,
 			},
 		},
 
 		// Specific fields for video unencoded streams
 		VideoInputPath:      stream.VideoInputPath,
 		DeleteAfterEncoding: stream.DeleteAfterEncoding,
+
+		// Specific fields for live streams
+		LiveStreamKey:     stream.LiveStreamKey,
+		AuthTokenTemplate: stream.AuthTokenTemplate,
+		Record: models.Record{
+			Enabled: stream.Record.Enabled,
+			Path:    stream.Record.Path,
+		},
 	}
 }
 
