@@ -123,7 +123,7 @@ channels:
           segment_duration: 2
           window_size: 5
 
-  # Live stream with recording
+  # Live stream with recording (files moved to record.path)
   "/recorded/{username}":
     stream:
       type: live
@@ -137,6 +137,20 @@ channels:
       record:
         enabled: true
         path: "recordings/{username}/{%STARTING_DATE%}"
+
+  # Live stream with in-place recording (files stay in stream.path)
+  "/inplace/{username}":
+    stream:
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
 ```
 
 **Live stream modes:**
@@ -147,13 +161,21 @@ channels:
 
 Live streams can optionally be recorded. When `record.enabled` is `true`:
 - **During stream**: All segments are kept on disk (no deletion), but only the last `window_size` segments appear in the live playlist
-- **On stream end**: A VOD playlist is generated from all segments, and files are moved to `record.path`
+- **On stream end**: A VOD playlist is generated from all segments
+
+**Recording modes:**
+
+| `record.enabled` | `record.path` | After stream ends |
+|---|---|---|
+| `false` (default) | N/A | Files deleted after `cleanup_delay` |
+| `true` | set | VOD playlist generated, files moved to `record.path` |
+| `true` | omitted | VOD playlist generated in-place, files stay in `stream.path` |
 
 When recording is disabled (default):
 - **During stream**: Sliding window with only the last `window_size` segments on disk
 - **On stream end**: All remaining files are deleted after `cleanup_delay`
 
-`record.path` supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values as the stream's path within the same session.
+`record.path` is optional. When provided, it supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values as the stream's path within the same session. When omitted, files remain in `stream.path` after the stream ends (in-place recording).
 
 ### Path Template System
 

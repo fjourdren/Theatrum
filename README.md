@@ -367,10 +367,13 @@ stream_templates:
 ```
 
 ### Live Stream with Recording
-When recording is enabled, all segments are kept on disk during the stream (while only the last `window_size` segments appear in the live playlist). When the stream ends, a VOD playlist is generated and all files are moved to `record.path`.
+When recording is enabled, all segments are kept on disk during the stream (while only the last `window_size` segments appear in the live playlist). When the stream ends, a VOD playlist is generated.
+
+Recording supports two modes: files can be **moved** to a separate `record.path`, or kept **in-place** in `stream.path`.
 
 ```yaml
 stream_templates:
+  # Recording with separate destination
   live_recorded:
     stream:
       type: live
@@ -384,12 +387,28 @@ stream_templates:
       record:
         enabled: true
         path: "recordings/{username}/{%STARTING_DATE%}"
+
+  # In-place recording (files stay in stream.path)
+  live_recorded_inplace:
+    stream:
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        # No path = files stay in stream.path after stream ends
 ```
 
 - `record.enabled`: Set to `true` to enable recording (default: `false`)
-- `record.path`: Destination path for the recording. Supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values within the same stream session.
+- `record.path` (optional): Destination path for the recording. Supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values within the same stream session. When omitted, files remain in `stream.path` (in-place recording).
 - Without recording (default): old segments are deleted during streaming, and all remaining files are cleaned up when the stream ends.
-- With recording: all segments accumulate on disk, and a playable VOD playlist is generated on stream end.
+- With recording + `record.path`: all segments accumulate on disk, a VOD playlist is generated, and files are moved to `record.path`.
+- With recording, no `record.path`: all segments accumulate on disk, a VOD playlist is generated in-place, and files stay in `stream.path`.
 
 ## License
 
