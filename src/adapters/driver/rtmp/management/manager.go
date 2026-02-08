@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"Theatrum/domain/models"
@@ -56,6 +57,24 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, streamCon
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
 	}
 
+	multiQuality := len(streamConfig.Qualities) > 0
+
+	// For passthrough, outputDir is {path}/default; streamRootDir is {path} (parent).
+	// For multi-quality, outputDir == streamRootDir (FFmpeg creates quality subdirs).
+	var streamRootDir string
+	if multiQuality {
+		streamRootDir = outputDir
+	} else {
+		streamRootDir = filepath.Dir(outputDir)
+	}
+
+	// Generate master.m3u8 wrapper for passthrough streams
+	if !multiQuality {
+		if err := generateMasterPlaylistWrapper(streamRootDir); err != nil {
+			return nil, fmt.Errorf("failed to generate master playlist wrapper: %v", err)
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := createFFmpegCommand(ctx, outputDir, streamConfig)
 
@@ -76,10 +95,11 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, streamCon
 		cancel:             cancel,
 		inputPath:          inputPath,
 		outputDir:          outputDir,
+		streamRootDir:      streamRootDir,
 		record:             streamConfig.Record,
 		resolvedRecordPath: resolvedRecordPath,
 		segmentDuration:    streamConfig.Distribution.Hls.SegmentDuration,
-		multiQuality:       len(streamConfig.Qualities) > 0,
+		multiQuality:       multiQuality,
 	}
 	sp.active.Store(true)
 

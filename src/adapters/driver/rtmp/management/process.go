@@ -25,6 +25,7 @@ type StreamProcess struct {
 	cancel             context.CancelFunc
 	inputPath          string
 	outputDir          string
+	streamRootDir      string // Root dir for stream files (parent of "default/" for passthrough, same as outputDir for multi-quality)
 	active             atomic.Bool // atomic boolean for active state
 	record             models.Record
 	resolvedRecordPath string
@@ -162,10 +163,10 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 	} else if sp.record.Enabled {
 		go sp.saveInPlace()
 	} else {
-		// Clean up the output directory
+		// Clean up the stream root directory (includes master.m3u8 for passthrough)
 		go func() {
 			time.Sleep(time.Duration(cfg.CleanupDelay) * time.Second)
-			if err := os.RemoveAll(sp.outputDir); err != nil {
+			if err := os.RemoveAll(sp.streamRootDir); err != nil {
 				log.Printf("Error cleaning up stream directory for: %s: %v", sp.inputPath, err)
 			} else {
 				log.Printf("Cleaned up stream directory for: %s", sp.inputPath)
@@ -201,21 +202,40 @@ func (sp *StreamProcess) saveRecording() {
 		}
 	}
 
-	// Create recording directory
-	if err := os.MkdirAll(recordDir, 0755); err != nil {
-		log.Printf("Error creating recording directory %s: %v", recordDir, err)
-		return
+	// Create recording directory (with default/ subdir for passthrough)
+	if !sp.multiQuality {
+		if err := os.MkdirAll(filepath.Join(recordDir, constants.DefaultQuality), 0755); err != nil {
+			log.Printf("Error creating recording directory %s: %v", recordDir, err)
+			return
+		}
+	} else {
+		if err := os.MkdirAll(recordDir, 0755); err != nil {
+			log.Printf("Error creating recording directory %s: %v", recordDir, err)
+			return
+		}
 	}
 
-	// Move files from outputDir to recordDir
-	if err := moveContents(sp.outputDir, recordDir); err != nil {
-		log.Printf("Error moving files to recording directory: %v", err)
-		return
+	if sp.multiQuality {
+		// Move all contents (quality dirs + master.m3u8) from streamRootDir to recordDir
+		if err := moveContents(sp.streamRootDir, recordDir); err != nil {
+			log.Printf("Error moving files to recording directory: %v", err)
+			return
+		}
+	} else {
+		// Move default/ contents into recordDir/default/
+		if err := moveContents(sp.outputDir, filepath.Join(recordDir, constants.DefaultQuality)); err != nil {
+			log.Printf("Error moving files to recording directory: %v", err)
+			return
+		}
+		// Generate master.m3u8 wrapper in recordDir
+		if err := generateMasterPlaylistWrapper(recordDir); err != nil {
+			log.Printf("Error generating master playlist wrapper for recording: %v", err)
+		}
 	}
 
-	// Remove original output directory
-	if err := os.RemoveAll(sp.outputDir); err != nil {
-		log.Printf("Error removing original stream directory: %s: %v", sp.outputDir, err)
+	// Remove original stream root directory
+	if err := os.RemoveAll(sp.streamRootDir); err != nil {
+		log.Printf("Error removing original stream directory: %s: %v", sp.streamRootDir, err)
 	}
 
 	log.Printf("Recording saved to: %s", recordDir)
@@ -241,9 +261,13 @@ func (sp *StreamProcess) saveInPlace() {
 		if err := generateVODPlaylist(sp.outputDir, sp.segmentDuration); err != nil {
 			log.Printf("Error generating VOD playlist: %v", err)
 		}
+		// Regenerate master.m3u8 wrapper (replaces the live version with a clean one)
+		if err := generateMasterPlaylistWrapper(sp.streamRootDir); err != nil {
+			log.Printf("Error generating master playlist wrapper for in-place recording: %v", err)
+		}
 	}
 
-	log.Printf("In-place recording saved at: %s", sp.outputDir)
+	log.Printf("In-place recording saved at: %s", sp.streamRootDir)
 }
 
 // moveContents moves all files and directories from src to dst.

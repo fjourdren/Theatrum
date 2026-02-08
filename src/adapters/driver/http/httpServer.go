@@ -57,15 +57,12 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		// Create the stream handler
 		handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry)
 		
-		if len(channel.Qualities) != 0 { // If there is a quality, then we need to handle quality-specific paths
-			// Handle quality-specific paths
-			channelRouter.Handle("/{quality}/{resource:.*}", handler).Methods("GET")
-			// Handle master playlist
-			channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
-		} else { // If there is no quality, then we need to handle simple paths ("default" quality in the storage path)
-			// Handle simple paths without quality
-			channelRouter.Handle("/{resource:.*}", handler).Methods("GET")
-		}
+		// Handle master playlist
+		channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
+		// Handle quality-specific paths (e.g., /low/playlist.m3u8, /default/playlist.m3u8)
+		channelRouter.Handle("/{quality}/{resource:.*}", handler).Methods("GET")
+		// Handle simple paths without quality prefix (backward compat)
+		channelRouter.Handle("/{resource:.*}", handler).Methods("GET")
 	}
 
 	// Serve frontend for any other routes
