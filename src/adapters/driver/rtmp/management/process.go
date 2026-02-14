@@ -15,6 +15,7 @@ import (
 	"Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/constants"
 	"Theatrum/domain/models"
+	"Theatrum/domain/services"
 )
 
 // LATER : move in another adapter
@@ -31,6 +32,8 @@ type StreamProcess struct {
 	resolvedRecordPath string
 	segmentDuration    int
 	multiQuality       bool
+	trackingKey        string
+	viewerTracker      *services.ViewerTracker
 }
 
 // createFFmpegCommand creates an FFmpeg command with the specified settings.
@@ -156,6 +159,11 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 		if sp.cmd.Process != nil {
 			sp.cmd.Process.Kill()
 		}
+	}
+
+	// Unregister viewer/view tracking for this stream
+	if sp.viewerTracker != nil && sp.trackingKey != "" {
+		sp.viewerTracker.UnregisterStream(sp.trackingKey)
 	}
 
 	if sp.record.Enabled && sp.resolvedRecordPath != "" {

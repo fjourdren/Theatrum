@@ -76,6 +76,14 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 			Enabled: stream.Record.Enabled,
 			Path:    stream.Record.Path,
 		},
+		Viewers: models.Viewers{
+			Enabled: stream.Viewers.Enabled,
+			Window:  stream.Viewers.Window,
+		},
+		Views: models.Views{
+			Enabled: stream.Views.Enabled,
+			Window:  stream.Views.Window,
+		},
 	}
 }
 

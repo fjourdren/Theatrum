@@ -218,6 +218,37 @@ distribution:
     window_size: 5       # Live streams only (default: 3)
 ```
 
+### Viewer & View Counting
+
+Theatrum can track concurrent viewers and total views per stream by monitoring `.ts` segment requests from unique client IPs.
+
+- **`viewers.txt`** (live streams only): Returns the number of concurrent viewers. A viewer is considered active until `window` seconds pass without a segment request.
+- **`views.txt`** (all stream types): Returns the total number of unique viewing sessions. A new view is counted when a client makes a segment request after being inactive for `window` seconds.
+
+Both files are served alongside `master.m3u8` at the stream's base URL (e.g., `http://localhost:8080/live/username/viewers.txt`).
+
+```yaml
+channels:
+  "/live/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      viewers:
+        enabled: true
+        window: 30          # Default: 30 seconds
+      views:
+        enabled: true
+        window: 30          # Default: 30 seconds
+```
+
+When disabled (default), requesting `viewers.txt` or `views.txt` returns 404. Client IP is extracted from the `X-Forwarded-For` header (for reverse proxy setups) or `RemoteAddr`.
+
 ### Channel Endpoints
 Channel endpoints can be configured with a templating system.
 

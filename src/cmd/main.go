@@ -56,6 +56,7 @@ func main() {
 	container.Provide(services.NewLiveStreamRegistry)
 	container.Provide(services.NewStreamService)
 	container.Provide(services.NewEncodeService)
+	container.Provide(services.NewViewerTracker)
 
 	// Provide RTMP authentication service
 	container.Provide(func(appService *services.ApplicationService, templateService *services.PathTemplateService) *services.RtmpAuthService {
@@ -78,13 +79,13 @@ func main() {
 	})
 
 	// Provide HTTP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.HttpPort {
-		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker) ports.HttpPort {
+		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry, viewerTracker)
 	})
 
 	// Provide RTMP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.RtmpPort {
-		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker)
 	})
 
 	// Start the application and jobs

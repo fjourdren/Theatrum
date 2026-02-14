@@ -18,7 +18,7 @@ src/
 ├── constants/               # App constants, paths, video settings
 ├── domain/
 │   ├── models/              # Stream, Quality, Application, Server, Distribution
-│   ├── services/            # ApplicationService, StreamService, EncodeService, PathTemplateService
+│   ├── services/            # ApplicationService, StreamService, EncodeService, PathTemplateService, ViewerTracker
 │   ├── repositories/        # Port interfaces (ConfigurationPort, EncoderPort, StoragePort)
 │   └── jobs/                # EncodeJobQueue, VideoUnencodedDetector
 └── adapters/
@@ -151,6 +151,24 @@ channels:
           window_size: 5
       record:
         enabled: true
+
+  # Live stream with viewer/view tracking
+  "/tracked/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      viewers:              # Concurrent viewer count (live streams only)
+        enabled: true
+        window: 30          # Seconds of inactivity before gone (default: 30)
+      views:                # Total view count (all stream types)
+        enabled: true
+        window: 30          # Seconds of inactivity before new view (default: 30)
 ```
 
 **Live stream modes:**
@@ -202,6 +220,23 @@ path: "recordings/{%UUID%}"                          # → recordings/550e8400-e
 - Both phases sanitize values through `sanitizeValue()` (alphanumeric, `_`, `-`, `.` only)
 - Registry lives in `PathTemplateService.builtinFuncs`; new functions can be added via `RegisterBuiltinFunc()`
 - Constants defined in `src/constants/templateConstantes.go`
+
+### Viewer & View Tracking
+
+Theatrum tracks concurrent viewers and total views per stream by monitoring `.ts` segment requests from unique client IPs.
+
+**Components:**
+- `ViewerTracker` service (`src/domain/services/viewerTracker.go`) — tracks per-stream viewer/view data
+- `StreamHandler` (`src/adapters/driver/http/handlers/streamHandler.go`) — calls tracker on `.ts` requests, serves `viewers.txt`/`views.txt`
+- Cleanup on stream end via `StreamProcess.Stop()` calling `ViewerTracker.UnregisterStream()`
+
+**Endpoints** (served alongside `master.m3u8`):
+- `viewers.txt` — concurrent viewer count (live streams only), returns 404 if disabled
+- `views.txt` — total view count (all stream types), returns 404 if disabled
+
+**Tracking key:** Fully resolved stream path (e.g., `live/alice/2026-02-14_12-30-45`)
+
+**Client identification:** `X-Forwarded-For` header (first IP) or `RemoteAddr` (port stripped)
 
 ## Stream Types
 

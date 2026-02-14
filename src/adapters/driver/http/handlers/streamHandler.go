@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/gorilla/mux"
 
+	"Theatrum/constants"
 	"Theatrum/domain/models"
 	"Theatrum/domain/services"
 )
@@ -19,15 +21,17 @@ type StreamHandler struct {
 	applicationService *services.ApplicationService
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
+	viewerTracker      *services.ViewerTracker
 }
 
-func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) *StreamHandler {
+func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker) *StreamHandler {
 	return &StreamHandler{
 		stream:             stream,
 		streamService:      streamService,
 		applicationService: applicationService,
 		templateService:    templateService,
 		registry:           registry,
+		viewerTracker:      viewerTracker,
 	}
 }
 
@@ -84,6 +88,9 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Expires", "0")
 	}
 
+	// Compute tracking key for viewer/view tracking
+	var trackingKey string
+
 	// For live streams, look up pre-resolved builtin vars from the registry
 	if h.stream.Type == models.StreamTypeLive {
 		// Compute stream key (same formula as RTMP side: resolve user vars only)
@@ -95,6 +102,44 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		// If not found → stream offline → builtins unresolved → file won't exist → 404
+
+		// Tracking key = fully resolved stream path
+		trackingKey, _ = h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+	} else {
+		// For non-live streams, tracking key = resolved stream path
+		trackingKey, _ = h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+	}
+
+	// Handle viewers.txt request
+	if resource == constants.ViewersFile {
+		if !h.stream.Viewers.Enabled {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		count := h.viewerTracker.GetViewerCount(trackingKey)
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		fmt.Fprintf(w, "%d", count)
+		return
+	}
+
+	// Handle views.txt request
+	if resource == constants.ViewsFile {
+		if !h.stream.Views.Enabled {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+		count := h.viewerTracker.GetViewCount(trackingKey)
+		w.Header().Set("Content-Type", "text/plain")
+		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+		fmt.Fprintf(w, "%d", count)
+		return
+	}
+
+	// Track .ts segment requests for viewer/view counting
+	if ext == ".ts" && (h.stream.Viewers.Enabled || h.stream.Views.Enabled) {
+		clientIP := services.GetClientIP(r)
+		h.viewerTracker.TrackSegmentRequest(trackingKey, clientIP, h.stream.Viewers, h.stream.Views)
 	}
 
 	// Get the storage path
