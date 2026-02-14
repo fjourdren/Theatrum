@@ -28,6 +28,10 @@ A powerful and flexible streaming server that supports video on demand (VOD) and
   - HLS (HTTP Live Streaming)
   - Configurable segment duration
 
+- 📊 **Monitoring**
+  - Prometheus metrics endpoint (`/metrics`)
+  - HTTP, RTMP, live stream, and encoding metrics
+
 - ⚙️ **Configuration**
   - Fully configurable through YAML
   - Customizable stream endpoints
@@ -251,6 +255,41 @@ channels:
 ```
 
 Built-in functions can be mixed freely with user variables in any path template.
+
+## Monitoring
+
+Theatrum exposes Prometheus metrics at `GET /metrics` on the HTTP port. All custom metrics are prefixed with `theatrum_`. Go runtime metrics are also included.
+
+### Metrics Reference
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `theatrum_http_requests_total` | Counter | `status_code`, `stream_type`, `file_type` | Total HTTP requests served |
+| `theatrum_http_request_duration_seconds` | Histogram | `stream_type`, `file_type` | HTTP request duration |
+| `theatrum_http_response_bytes_total` | Counter | `stream_type`, `file_type` | Total bytes sent in HTTP responses |
+| `theatrum_http_requests_in_flight` | Gauge | — | HTTP requests currently being served |
+| `theatrum_rtmp_connections_total` | Counter | — | Total RTMP connections |
+| `theatrum_rtmp_connections_active` | Gauge | — | Currently active RTMP connections |
+| `theatrum_rtmp_auth_total` | Counter | `result` | RTMP authentication attempts (success/failure) |
+| `theatrum_rtmp_received_bytes_total` | Counter | `channel`, `type` | Bytes received from RTMP streams |
+| `theatrum_rtmp_received_frames_total` | Counter | `channel`, `type` | Frames received from RTMP streams |
+| `theatrum_live_streams_active` | Gauge | — | Currently active live streams |
+| `theatrum_stream_duration_seconds` | Histogram | — | Duration of live streams |
+| `theatrum_ffmpeg_exits_total` | Counter | `status` | FFmpeg process exits (clean/error/killed) |
+| `theatrum_recordings_total` | Counter | `mode`, `status` | Recording operations (move/in_place, success/failure) |
+| `theatrum_encode_queue_depth` | Gauge | — | Jobs in the encode queue |
+| `theatrum_encode_jobs_total` | Counter | `status` | Encode jobs processed (success/failure) |
+| `theatrum_encode_job_duration_seconds` | Histogram | — | Duration of encode jobs |
+| `theatrum_channels_configured` | Gauge | `type` | Configured channels by stream type |
+
+### Prometheus Scrape Config
+
+```yaml
+scrape_configs:
+  - job_name: "theatrum"
+    static_configs:
+      - targets: ["localhost:8080"]
+```
 
 ## Getting Started
 

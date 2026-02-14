@@ -6,9 +6,12 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 
+	"Theatrum/adapters/driven/metrics"
 	"Theatrum/domain/models"
 	"Theatrum/domain/services"
 )
@@ -19,21 +22,24 @@ type StreamHandler struct {
 	applicationService *services.ApplicationService
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
+	metrics            *metrics.Metrics
 }
 
-func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) *StreamHandler {
+func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) *StreamHandler {
 	return &StreamHandler{
 		stream:             stream,
 		streamService:      streamService,
 		applicationService: applicationService,
 		templateService:    templateService,
 		registry:           registry,
+		metrics:            m,
 	}
 }
 
 func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	vars := mux.Vars(r)
-	
+
 	resource := vars["resource"]
 
 	if(resource == "" || resource == "/") {
@@ -112,6 +118,28 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Determine metric labels
+	streamType := "vod"
+	if h.stream.Type == models.StreamTypeLive {
+		streamType = "live"
+	}
+	fileType := "other"
+	switch ext {
+	case ".m3u8":
+		fileType = "playlist"
+	case ".ts":
+		fileType = "segment"
+	}
+
+	// Wrap writer to capture status code and bytes written
+	rw := metrics.NewResponseWriter(w)
+
 	// Serve the file
-	http.ServeFile(w, r, resourceStoragePath)
+	http.ServeFile(rw, r, resourceStoragePath)
+
+	// Record metrics
+	duration := time.Since(start).Seconds()
+	h.metrics.HttpRequestDuration.WithLabelValues(streamType, fileType).Observe(duration)
+	h.metrics.HttpRequestsTotal.WithLabelValues(strconv.Itoa(rw.StatusCode), streamType, fileType).Inc()
+	h.metrics.HttpResponseBytes.WithLabelValues(streamType, fileType).Add(float64(rw.BytesWritten))
 }

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"Theatrum/adapters/driven/ffmpegEncoder/ffmpegargs"
+	"Theatrum/adapters/driven/metrics"
 	"Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/constants"
 	"Theatrum/domain/models"
@@ -31,6 +32,8 @@ type StreamProcess struct {
 	resolvedRecordPath string
 	segmentDuration    int
 	multiQuality       bool
+	metrics            *metrics.Metrics
+	startedAt          time.Time
 }
 
 // createFFmpegCommand creates an FFmpeg command with the specified settings.
@@ -120,8 +123,10 @@ func (sp *StreamProcess) monitor(sm *Manager) {
 
 	if err := sp.cmd.Wait(); err != nil {
 		log.Printf("FFmpeg exited for: %s: %v", sp.inputPath, err)
+		sp.metrics.FfmpegExitsTotal.WithLabelValues("error").Inc()
 	} else {
 		log.Printf("FFmpeg exited normally for: %s", sp.inputPath)
+		sp.metrics.FfmpegExitsTotal.WithLabelValues("clean").Inc()
 	}
 }
 
@@ -156,7 +161,10 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 		if sp.cmd.Process != nil {
 			sp.cmd.Process.Kill()
 		}
+		sp.metrics.FfmpegExitsTotal.WithLabelValues("killed").Inc()
 	}
+
+	sp.metrics.StreamDuration.Observe(time.Since(sp.startedAt).Seconds())
 
 	if sp.record.Enabled && sp.resolvedRecordPath != "" {
 		go sp.saveRecording()
@@ -184,6 +192,7 @@ func (sp *StreamProcess) saveRecording() {
 		entries, err := os.ReadDir(sp.outputDir)
 		if err != nil {
 			log.Printf("Error reading output directory for recording: %s: %v", sp.outputDir, err)
+			sp.metrics.RecordingsTotal.WithLabelValues("move", "failure").Inc()
 			return
 		}
 		for _, entry := range entries {
@@ -206,11 +215,13 @@ func (sp *StreamProcess) saveRecording() {
 	if !sp.multiQuality {
 		if err := os.MkdirAll(filepath.Join(recordDir, constants.DefaultQuality), 0755); err != nil {
 			log.Printf("Error creating recording directory %s: %v", recordDir, err)
+			sp.metrics.RecordingsTotal.WithLabelValues("move", "failure").Inc()
 			return
 		}
 	} else {
 		if err := os.MkdirAll(recordDir, 0755); err != nil {
 			log.Printf("Error creating recording directory %s: %v", recordDir, err)
+			sp.metrics.RecordingsTotal.WithLabelValues("move", "failure").Inc()
 			return
 		}
 	}
@@ -219,12 +230,14 @@ func (sp *StreamProcess) saveRecording() {
 		// Move all contents (quality dirs + master.m3u8) from streamRootDir to recordDir
 		if err := moveContents(sp.streamRootDir, recordDir); err != nil {
 			log.Printf("Error moving files to recording directory: %v", err)
+			sp.metrics.RecordingsTotal.WithLabelValues("move", "failure").Inc()
 			return
 		}
 	} else {
 		// Move default/ contents into recordDir/default/
 		if err := moveContents(sp.outputDir, filepath.Join(recordDir, constants.DefaultQuality)); err != nil {
 			log.Printf("Error moving files to recording directory: %v", err)
+			sp.metrics.RecordingsTotal.WithLabelValues("move", "failure").Inc()
 			return
 		}
 		// Generate master.m3u8 wrapper in recordDir
@@ -236,8 +249,11 @@ func (sp *StreamProcess) saveRecording() {
 	// Remove original stream root directory
 	if err := os.RemoveAll(sp.streamRootDir); err != nil {
 		log.Printf("Error removing original stream directory: %s: %v", sp.streamRootDir, err)
+		sp.metrics.RecordingsTotal.WithLabelValues("move", "failure").Inc()
+		return
 	}
 
+	sp.metrics.RecordingsTotal.WithLabelValues("move", "success").Inc()
 	log.Printf("Recording saved to: %s", recordDir)
 }
 
@@ -247,6 +263,7 @@ func (sp *StreamProcess) saveInPlace() {
 		entries, err := os.ReadDir(sp.outputDir)
 		if err != nil {
 			log.Printf("Error reading output directory for in-place recording: %s: %v", sp.outputDir, err)
+			sp.metrics.RecordingsTotal.WithLabelValues("in_place", "failure").Inc()
 			return
 		}
 		for _, entry := range entries {
@@ -267,6 +284,7 @@ func (sp *StreamProcess) saveInPlace() {
 		}
 	}
 
+	sp.metrics.RecordingsTotal.WithLabelValues("in_place", "success").Inc()
 	log.Printf("In-place recording saved at: %s", sp.streamRootDir)
 }
 
