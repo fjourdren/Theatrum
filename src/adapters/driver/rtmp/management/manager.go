@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 
+	"Theatrum/adapters/driven/metrics"
 	"Theatrum/domain/models"
 )
 
@@ -30,7 +32,7 @@ func (sm *Manager) SetContext(ctx context.Context) {
 }
 
 // GetOrCreateStream gets an existing stream or creates a new one
-func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream *models.Stream, resolvedRecordPath string) (*StreamProcess, error) {
+func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream *models.Stream, resolvedRecordPath string, m *metrics.Metrics) (*StreamProcess, error) {
 	// Try to get existing stream
 	if existing, ok := sm.streams.Load(inputPath); ok {
 		if sp := existing.(*StreamProcess); sp.active.Load() {
@@ -41,7 +43,7 @@ func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream 
 	}
 
 	// Create new stream
-	sp, err := sm.createNewStream(inputPath, outputDir, stream, resolvedRecordPath)
+	sp, err := sm.createNewStream(inputPath, outputDir, stream, resolvedRecordPath, m)
 	if err != nil {
 		return nil, err
 	}
@@ -52,7 +54,7 @@ func (sm *Manager) GetOrCreateStream(inputPath string, outputDir string, stream 
 
 // createNewStream creates a new FFmpeg process for a streamer
 // The outputDir is built by the RtmpAuthService using PathTemplateService
-func (sm *Manager) createNewStream(inputPath string, outputDir string, streamConfig *models.Stream, resolvedRecordPath string) (*StreamProcess, error) {
+func (sm *Manager) createNewStream(inputPath string, outputDir string, streamConfig *models.Stream, resolvedRecordPath string, m *metrics.Metrics) (*StreamProcess, error) {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create output directory: %v", err)
 	}
@@ -100,6 +102,8 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, streamCon
 		resolvedRecordPath: resolvedRecordPath,
 		segmentDuration:    streamConfig.Distribution.Hls.SegmentDuration,
 		multiQuality:       multiQuality,
+		metrics:            m,
+		startedAt:          time.Now(),
 	}
 	sp.active.Store(true)
 

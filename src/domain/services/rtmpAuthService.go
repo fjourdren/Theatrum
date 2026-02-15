@@ -37,19 +37,19 @@ func (s *RtmpAuthService) IsAuthorized(tcurl string) bool {
 	return false
 }
 
-// ExtractChannel extracts channel configuration and variables from TCURL
-func (s *RtmpAuthService) ExtractChannel(tcurl string) (*models.Stream, map[string]string, bool) {
+// ExtractChannel extracts channel configuration, variables, and the matching pattern from TCURL
+func (s *RtmpAuthService) ExtractChannel(tcurl string) (*models.Stream, map[string]string, string, bool) {
 	path := s.extractPathFromTCURL(tcurl)
 
 	for pattern, stream := range *s.channels {
 		regexStr, varNames := s.patternToRegex(pattern)
 		vars, ok := s.extractVariables(regexStr, varNames, path)
 		if ok {
-			return &stream, vars, true
+			return &stream, vars, pattern, true
 		}
 	}
 
-	return nil, nil, false
+	return nil, nil, "", false
 }
 
 // ValidateAuthentication validates the publishing token using XOR authentication

@@ -7,6 +7,7 @@ import (
 	"net"
 	"strconv"
 
+	"Theatrum/adapters/driven/metrics"
 	"Theatrum/adapters/driver/ports"
 	"Theatrum/adapters/driver/rtmp/config"
 	rtmphandler "Theatrum/adapters/driver/rtmp/handlers"
@@ -23,6 +24,7 @@ type RtmpServer struct {
 	rtmpAuthService    *services.RtmpAuthService
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
+	metrics            *metrics.Metrics
 	server             *rtmp.Server
 	listener           net.Listener
 	streamManager      *stream.Manager
@@ -31,13 +33,14 @@ type RtmpServer struct {
 // Verify interface implementation
 var _ ports.RtmpPort = (*RtmpServer)(nil)
 
-func NewRtmpServer(applicationService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry) ports.RtmpPort {
+func NewRtmpServer(applicationService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.RtmpPort {
 	return &RtmpServer{
 		applicationService: applicationService,
 		streamService:      streamService,
 		rtmpAuthService:    rtmpAuthService,
 		templateService:    templateService,
 		registry:           registry,
+		metrics:            m,
 		streamManager:      stream.NewManager(),
 	}
 }
@@ -52,7 +55,7 @@ func (s *RtmpServer) StartRtmpServer() error {
 	s.server = rtmp.NewServer(&rtmp.ServerConfig{
 		OnConnect: func(conn net.Conn) (io.ReadWriteCloser, *rtmp.ConnConfig) {
 			return conn, &rtmp.ConnConfig{
-				Handler: rtmphandler.NewHandler(s.rtmpAuthService, s.templateService, s.registry, s.streamManager, s.getConfig()),
+				Handler: rtmphandler.NewHandler(s.rtmpAuthService, s.templateService, s.registry, s.streamManager, s.getConfig(), s.metrics),
 			}
 		},
 	})
