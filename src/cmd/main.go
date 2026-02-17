@@ -19,6 +19,7 @@ import (
 	"Theatrum/domain/repositories"
 	"Theatrum/domain/services"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/dig"
 )
 
@@ -80,6 +81,11 @@ func main() {
 		templateService *services.PathTemplateService,
 	) *jobs.VideoUnencodedDetector {
 		return jobs.NewVideoUnencodedDetector(appService, encodeQueue, storage, templateService)
+	})
+
+	// Register viewer/view metrics collector
+	container.Invoke(func(tracker *services.ViewerTracker) {
+		prometheus.MustRegister(metrics.NewViewerCollector(tracker))
 	})
 
 	// Provide HTTP server

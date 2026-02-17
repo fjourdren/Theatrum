@@ -130,6 +130,56 @@ func (vt *ViewerTracker) GetViewCount(trackingKey string) int64 {
 	return st.totalViews
 }
 
+// StreamStats holds viewer and view counts for a single stream.
+type StreamStats struct {
+	TrackingKey string
+	Viewers     int
+	Views       int64
+}
+
+// GetAllStreamStats returns stats for all active streams.
+// Used by the Prometheus collector to export metrics on each scrape.
+func (vt *ViewerTracker) GetAllStreamStats() []StreamStats {
+	vt.mu.RLock()
+	keys := make([]string, 0, len(vt.streams))
+	for k := range vt.streams {
+		keys = append(keys, k)
+	}
+	vt.mu.RUnlock()
+
+	now := time.Now()
+	stats := make([]StreamStats, 0, len(keys))
+
+	for _, key := range keys {
+		vt.mu.RLock()
+		st, ok := vt.streams[key]
+		vt.mu.RUnlock()
+		if !ok {
+			continue
+		}
+
+		st.mu.RLock()
+		viewers := 0
+		if st.viewersEnabled {
+			for _, vs := range st.activeViewers {
+				if now.Sub(vs.startedAt) >= st.viewerWindow && now.Sub(vs.lastActive) < st.viewerWindow {
+					viewers++
+				}
+			}
+		}
+		views := st.totalViews
+		st.mu.RUnlock()
+
+		stats = append(stats, StreamStats{
+			TrackingKey: key,
+			Viewers:     viewers,
+			Views:       views,
+		})
+	}
+
+	return stats
+}
+
 // UnregisterStream cleans up tracking data when a live stream ends.
 // Persists the final view count to disk before removing from memory.
 func (vt *ViewerTracker) UnregisterStream(trackingKey string) {

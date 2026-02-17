@@ -306,15 +306,17 @@ Theatrum exposes Prometheus metrics at `GET /metrics` on the HTTP port. All cust
 | `theatrum_rtmp_connections_total` | Counter | — | Total RTMP connections |
 | `theatrum_rtmp_connections_active` | Gauge | — | Currently active RTMP connections |
 | `theatrum_rtmp_auth_total` | Counter | `result` | RTMP authentication attempts (success/failure) |
-| `theatrum_rtmp_received_bytes_total` | Counter | `channel`, `type` | Bytes received from RTMP streams |
-| `theatrum_rtmp_received_frames_total` | Counter | `channel`, `type` | Frames received from RTMP streams |
+| `theatrum_rtmp_received_bytes_total` | Counter | `channel`, `type`, `stream_path` | Bytes received from RTMP streams |
+| `theatrum_rtmp_received_frames_total` | Counter | `channel`, `type`, `stream_path` | Frames received from RTMP streams |
 | `theatrum_live_streams_active` | Gauge | — | Currently active live streams |
-| `theatrum_stream_duration_seconds` | Histogram | — | Duration of live streams |
-| `theatrum_ffmpeg_exits_total` | Counter | `status` | FFmpeg process exits (clean/error/killed) |
-| `theatrum_recordings_total` | Counter | `mode`, `status` | Recording operations (move/in_place, success/failure) |
+| `theatrum_stream_duration_seconds` | Histogram | `stream_path` | Duration of live streams |
+| `theatrum_ffmpeg_exits_total` | Counter | `status`, `stream_path` | FFmpeg process exits (clean/error/killed) |
+| `theatrum_recordings_total` | Counter | `mode`, `status`, `stream_path` | Recording operations (move/in_place, success/failure) |
 | `theatrum_encode_queue_depth` | Gauge | — | Jobs in the encode queue |
 | `theatrum_encode_jobs_total` | Counter | `status` | Encode jobs processed (success/failure) |
 | `theatrum_encode_job_duration_seconds` | Histogram | — | Duration of encode jobs |
+| `theatrum_stream_viewers` | Gauge | `stream_path` | Concurrent viewers per stream |
+| `theatrum_stream_views` | Gauge | `stream_path` | Total accumulated views per stream |
 | `theatrum_channels_configured` | Gauge | `type` | Configured channels by stream type |
 
 ### Prometheus Scrape Config
