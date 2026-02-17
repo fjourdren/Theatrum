@@ -43,7 +43,7 @@ func NewRtmpServer(applicationService *services.ApplicationService, streamServic
 		registry:           registry,
 		viewerTracker:      viewerTracker,
 		streamManager:      stream.NewManager(viewerTracker),
-		metrics:            m
+		metrics:            m,
 	}
 }
 

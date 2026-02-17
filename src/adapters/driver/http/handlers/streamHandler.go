@@ -25,6 +25,7 @@ type StreamHandler struct {
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
 	viewerTracker      *services.ViewerTracker
+	metrics            *metrics.Metrics
 }
 
 func NewStreamHandler(stream *models.Stream, streamService *services.StreamService, applicationService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) *StreamHandler {

@@ -83,12 +83,12 @@ func main() {
 	})
 
 	// Provide HTTP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.HttpPort {
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.HttpPort {
 		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry, viewerTracker, m)
 	})
 
 	// Provide RTMP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.RtmpPort {
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.RtmpPort {
 		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker, m)
 	})
 
