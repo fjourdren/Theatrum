@@ -222,6 +222,41 @@ distribution:
     window_size: 5       # Live streams only (default: 3)
 ```
 
+### Viewer & View Counting
+
+Theatrum can track concurrent viewers and total views per stream by monitoring `.ts` segment requests from unique client IPs. Both use a **delayed window** — they only count after a client has been watching continuously for `window` seconds.
+
+- **`viewers.txt`** (live streams only): Returns the number of concurrent viewers. A viewer only appears in the count after watching for at least `window` seconds. If they stop requesting segments for `window` seconds, their session resets.
+- **`views.txt`** (all stream types): Returns the total number of viewing sessions. A view is only counted once a client has watched continuously for `window` seconds. A new session starts after `window` seconds of inactivity.
+
+Setting `window: 0` counts immediately on first request (no delay).
+
+Both files are served alongside `master.m3u8` at the stream's base URL (e.g., `http://localhost:8080/live/username/viewers.txt`).
+
+```yaml
+channels:
+  "/live/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      viewers:
+        enabled: true
+        window: 30          # Minimum watch time in seconds (default: 30)
+      views:
+        enabled: true
+        window: 30          # Minimum watch time in seconds (default: 30)
+```
+
+When disabled (default), requesting `viewers.txt` or `views.txt` returns 404. Client IP is extracted from the `X-Forwarded-For` header (for reverse proxy setups) or `RemoteAddr`.
+
+View counts are persisted to disk and survive server restarts. When recording is enabled, `views.txt` is preserved alongside the recording. When recording is disabled, all files (including `views.txt`) are deleted on stream end.
+
 ### Channel Endpoints
 Channel endpoints can be configured with a templating system.
 

@@ -60,6 +60,7 @@ func main() {
 	container.Provide(services.NewLiveStreamRegistry)
 	container.Provide(services.NewStreamService)
 	container.Provide(services.NewEncodeService)
+	container.Provide(services.NewViewerTracker)
 
 	// Provide RTMP authentication service
 	container.Provide(func(appService *services.ApplicationService, templateService *services.PathTemplateService) *services.RtmpAuthService {
@@ -82,13 +83,13 @@ func main() {
 	})
 
 	// Provide HTTP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.HttpPort {
-		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry, m)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.HttpPort {
+		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry, viewerTracker, m)
 	})
 
 	// Provide RTMP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.RtmpPort {
-		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, m)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker, m)
 	})
 
 	// Start the application and jobs

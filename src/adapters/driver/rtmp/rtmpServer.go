@@ -24,6 +24,7 @@ type RtmpServer struct {
 	rtmpAuthService    *services.RtmpAuthService
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
+	viewerTracker      *services.ViewerTracker
 	metrics            *metrics.Metrics
 	server             *rtmp.Server
 	listener           net.Listener
@@ -33,15 +34,16 @@ type RtmpServer struct {
 // Verify interface implementation
 var _ ports.RtmpPort = (*RtmpServer)(nil)
 
-func NewRtmpServer(applicationService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.RtmpPort {
+func NewRtmpServer(applicationService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.RtmpPort {
 	return &RtmpServer{
 		applicationService: applicationService,
 		streamService:      streamService,
 		rtmpAuthService:    rtmpAuthService,
 		templateService:    templateService,
 		registry:           registry,
+		viewerTracker:      viewerTracker,
+		streamManager:      stream.NewManager(viewerTracker),
 		metrics:            m,
-		streamManager:      stream.NewManager(),
 	}
 }
 

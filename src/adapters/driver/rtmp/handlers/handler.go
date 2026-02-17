@@ -171,8 +171,12 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 		log.Printf("Recording path: %s", resolvedRecordPath)
 	}
 
+	// Compute tracking key = fully resolved stream path (for viewer/view tracking)
+	trackingKey, _ := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, mergedVars)
+
 	log.Printf("Stream output path: %s", localPath)
-	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream, resolvedRecordPath, h.metrics)
+
+	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream, resolvedRecordPath, trackingKey, h.metrics)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
 		return err

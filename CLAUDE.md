@@ -18,7 +18,7 @@ src/
 ├── constants/               # App constants, paths, video settings
 ├── domain/
 │   ├── models/              # Stream, Quality, Application, Server, Distribution
-│   ├── services/            # ApplicationService, StreamService, EncodeService, PathTemplateService
+│   ├── services/            # ApplicationService, StreamService, EncodeService, PathTemplateService, ViewerTracker
 │   ├── repositories/        # Port interfaces (ConfigurationPort, EncoderPort, StoragePort)
 │   └── jobs/                # EncodeJobQueue, VideoUnencodedDetector
 └── adapters/
@@ -152,6 +152,24 @@ channels:
           window_size: 5
       record:
         enabled: true
+
+  # Live stream with viewer/view tracking
+  "/tracked/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      viewers:              # Concurrent viewer count (live streams only)
+        enabled: true
+        window: 30          # Minimum seconds of watching before counted (default: 30)
+      views:                # Total view count (all stream types)
+        enabled: true
+        window: 30          # Minimum seconds of watching before counted (default: 30)
 ```
 
 **Live stream modes:**
@@ -203,6 +221,39 @@ path: "recordings/{%UUID%}"                          # → recordings/550e8400-e
 - Both phases sanitize values through `sanitizeValue()` (alphanumeric, `_`, `-`, `.` only)
 - Registry lives in `PathTemplateService.builtinFuncs`; new functions can be added via `RegisterBuiltinFunc()`
 - Constants defined in `src/constants/templateConstantes.go`
+
+### Viewer & View Tracking
+
+Theatrum tracks concurrent viewers and total views per stream by monitoring `.ts` segment requests from unique client IPs. Both viewers and views use a **delayed window** — they only count after a client has been watching continuously for `window` seconds.
+
+**Components:**
+- `ViewerTracker` service (`src/domain/services/viewerTracker.go`) — tracks per-stream viewer/view data with delayed counting, persists view counts to disk
+- `StreamHandler` (`src/adapters/driver/http/handlers/streamHandler.go`) — calls tracker on `.ts` requests, serves `viewers.txt`/`views.txt`
+- Cleanup on stream end via `StreamProcess.Stop()` calling `ViewerTracker.UnregisterStream()`
+
+**Endpoints** (served alongside `master.m3u8`):
+- `viewers.txt` — concurrent viewer count (live streams only), returns 404 if disabled
+- `views.txt` — total view count (all stream types), returns 404 if disabled
+
+**Delayed window behavior:**
+- Each client IP starts a new session on first `.ts` request (or after inactivity >= `window`)
+- **Viewers**: a client only appears in the viewer count after watching continuously for `window` seconds. If they stop requesting segments for `window` seconds, their session resets
+- **Views**: a view is only counted once a client has watched continuously for `window` seconds. Each session can increment the view count at most once
+- `window: 0` counts immediately on first request (same as instant behavior)
+
+**Tracking key:** Fully resolved stream path (e.g., `live/alice/2026-02-14_12-30-45`)
+
+**Client identification:** `X-Forwarded-For` header (first IP) or `RemoteAddr` (port stripped)
+
+**View count persistence:**
+- View counts are persisted to disk at `{VideoDir}/{trackingKey}/views.txt`
+- Counts are flushed to disk periodically (every 10s when dirty) and on stream end (`UnregisterStream()`)
+- On stream start, `ViewerTracker` seeds `totalViews` from the existing file on disk
+- When a stream is not in memory, `GetViewCount()` falls back to reading from disk
+- Viewer counts (concurrent) are ephemeral and correctly reset — only views are persisted
+- During non-recording stream cleanup, all files are deleted (including `views.txt`)
+- During recording with `record.path`, `views.txt` is moved alongside other files to the recording directory
+- During in-place recording, `views.txt` stays in `stream.path` with other files
 
 ## Stream Types
 

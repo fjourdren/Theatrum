@@ -129,17 +129,30 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		return err
 	}
 
+	// Validate viewers config: only valid for live streams
+	if stream.Viewers.Enabled && stream.Type != string(models.StreamTypeLive) {
+		return fmt.Errorf("%s has viewers enabled but is not a live stream (only live streams support viewer tracking)", context)
+	}
+	if stream.Viewers.Enabled && stream.Viewers.Window <= 0 {
+		return fmt.Errorf("%s has invalid viewers window: must be > 0 (viewers require an expiry window)", context)
+	}
+
+	// Validate views config
+	if stream.Views.Window < 0 {
+		return fmt.Errorf("%s has invalid views window: must be >= 0 (0 means instant count)", context)
+	}
+
 	// Validate video_unencoded specific fields
 	if stream.Type == string(models.StreamTypeVideoUnEncoded) {
 		if stream.VideoInputPath == "" {
 			return fmt.Errorf("%s of type video_unencoded must have video_input_path", context)
 		}
-		
-		// Validate video input path security  
+
+		// Validate video input path security
 		if err := y.validatePath(stream.VideoInputPath, fmt.Sprintf("%s video_input_path", context)); err != nil {
 			return err
 		}
-		
+
 		// delete_after_encoding is valid for video_unencoded streams (no validation needed, bool defaults to false)
 		if stream.Record.Enabled {
 			return fmt.Errorf("%s of type video_unencoded should not have record enabled (only live streams support recording)", context)

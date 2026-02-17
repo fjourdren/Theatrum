@@ -16,6 +16,7 @@ import (
 	"Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/constants"
 	"Theatrum/domain/models"
+	"Theatrum/domain/services"
 )
 
 // LATER : move in another adapter
@@ -32,6 +33,8 @@ type StreamProcess struct {
 	resolvedRecordPath string
 	segmentDuration    int
 	multiQuality       bool
+	trackingKey        string
+	viewerTracker      *services.ViewerTracker
 	metrics            *metrics.Metrics
 	startedAt          time.Time
 }
@@ -164,6 +167,10 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 		sp.metrics.FfmpegExitsTotal.WithLabelValues("killed").Inc()
 	}
 
+	// Unregister viewer/view tracking for this stream
+	if sp.viewerTracker != nil && sp.trackingKey != "" {
+		sp.viewerTracker.UnregisterStream(sp.trackingKey)
+	}
 	sp.metrics.StreamDuration.Observe(time.Since(sp.startedAt).Seconds())
 
 	if sp.record.Enabled && sp.resolvedRecordPath != "" {
@@ -243,6 +250,11 @@ func (sp *StreamProcess) saveRecording() {
 		// Generate master.m3u8 wrapper in recordDir
 		if err := generateMasterPlaylistWrapper(recordDir); err != nil {
 			log.Printf("Error generating master playlist wrapper for recording: %v", err)
+		}
+		// Move views.txt to recording directory
+		viewsSrc := filepath.Join(sp.streamRootDir, constants.ViewsFile)
+		if _, err := os.Stat(viewsSrc); err == nil {
+			os.Rename(viewsSrc, filepath.Join(recordDir, constants.ViewsFile))
 		}
 	}
 

@@ -22,6 +22,7 @@ type HttpServer struct {
 	streamService      *services.StreamService
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
+	viewerTracker      *services.ViewerTracker
 	metrics            *metrics.Metrics
 	server             *http.Server
 }
@@ -29,12 +30,13 @@ type HttpServer struct {
 // Verify interface implementation
 var _ ports.HttpPort = (*HttpServer)(nil)
 
-func NewHttpServer(applicationService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.HttpPort {
+func NewHttpServer(applicationService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.HttpPort {
 	return &HttpServer{
 		applicationService: applicationService,
 		streamService:      streamService,
 		templateService:    templateService,
 		registry:           registry,
+		viewerTracker:      viewerTracker,
 		metrics:            m,
 	}
 }
@@ -62,10 +64,13 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		// Create a subrouter for this channel
 		channelRouter := r.PathPrefix(path).Subrouter()
 		// Create the stream handler
-		handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry, s.metrics)
+    handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry, s.viewerTracker, s.metrics)
 		
 		// Handle master playlist
 		channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
+		// Handle viewers.txt and views.txt
+		channelRouter.Handle("/{resource:" + constants.ViewersFile + "}", handler).Methods("GET")
+		channelRouter.Handle("/{resource:" + constants.ViewsFile + "}", handler).Methods("GET")
 		// Handle quality-specific paths (e.g., /low/playlist.m3u8, /default/playlist.m3u8)
 		channelRouter.Handle("/{quality}/{resource:.*}", handler).Methods("GET")
 		// Handle simple paths without quality prefix (backward compat)

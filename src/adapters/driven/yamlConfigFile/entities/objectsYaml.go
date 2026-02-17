@@ -64,12 +64,24 @@ type Stream struct {
 	// Specific fields for live streams
 	LiveStreamKey     string `yaml:"live_stream_key"`
 	AuthTokenTemplate string `yaml:"auth_token_template"` // Template for XOR auth, e.g. "{username}" or "{room_id}{username}"
-	Record            Record `yaml:"record,omitempty"`
+	Record            Record  `yaml:"record,omitempty"`
+	Viewers           Viewers `yaml:"viewers,omitempty"`
+	Views             Views   `yaml:"views,omitempty"`
 }
 
 type Record struct {
 	Enabled bool   `yaml:"enabled,omitempty"`
 	Path    string `yaml:"path,omitempty"`
+}
+
+type Viewers struct {
+	Enabled bool `yaml:"enabled,omitempty"`
+	Window  int  `yaml:"window,omitempty"`
+}
+
+type Views struct {
+	Enabled bool `yaml:"enabled,omitempty"`
+	Window  int  `yaml:"window,omitempty"`
 }
 
 type StreamTemplate struct {

@@ -110,6 +110,12 @@ stream_templates:
         hls:
           segment_duration: 2
           window_size: 3       # Number of segments in the live playlist (default: 3)
+      viewers:                   # Concurrent viewer count (live streams only)
+        enabled: true
+        window: 30               # Seconds of inactivity before a viewer is considered gone
+      views:                     # Total view count (all stream types)
+        enabled: true
+        window: 30               # Seconds of inactivity before a new visit counts as a new view (0 = instant)
 
   # Live stream with recording enabled
   live_recorded:
