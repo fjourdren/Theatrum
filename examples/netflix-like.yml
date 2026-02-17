@@ -1,0 +1,112 @@
+# ════════════════════════════════════════════════════════════════════════
+# Netflix-like — Premium pre-encoded VOD
+#
+# This configuration sets up a premium video-on-demand platform serving
+# pre-encoded content at high bitrates up to 4K. All encoding is assumed
+# to be done by an external pipeline (e.g., FFmpeg batch jobs, cloud
+# encoding service) before content is placed in Theatrum's storage.
+#
+# Use cases:
+#   - Premium streaming services
+#   - Movie/series distribution platforms
+#   - Corporate video libraries with high-quality requirements
+#
+# How it works:
+#   - Content is pre-encoded externally and placed in the storage directory
+#   - Movies are served at /movie/{title}/...
+#   - Series are served at /series/{series_id}/...
+#   - Longer segment durations (10s) improve compression efficiency for VOD
+#   - Higher bitrates and 4K "ultra" profile for premium viewing experience
+# ════════════════════════════════════════════════════════════════════════
+
+application:
+  public_path: "http://localhost:8080"
+  all_streams_playlist:
+    enabled: true            # Acts as a content catalog
+    path: "all_streams.m3u8"
+
+# Server ports (RTMP port is required in config but unused for VOD-only setups)
+server:
+  http: 8080
+  rtmp: 1935
+
+# ────────────────
+# Quality profiles — higher bitrates for premium quality
+quality_profiles: &QUALITY_PROFILES
+  medium: &MEDIUM
+    width: 1280
+    height: 720
+    framerate: 30
+    bitrate: "3000k"
+    codec: "libx264"
+    audio:
+      bitrate: "128k"
+      codec: "aac"
+
+  high: &HIGH
+    width: 1920
+    height: 1080
+    framerate: 30
+    bitrate: "6000k"
+    codec: "libx264"
+    audio:
+      bitrate: "192k"
+      codec: "aac"
+
+  ultra: &ULTRA
+    width: 3840
+    height: 2160
+    framerate: 30
+    bitrate: "15000k"
+    codec: "libx264"
+    audio:
+      bitrate: "256k"
+      codec: "aac"
+
+# ────────────────
+# Stream templates
+stream_templates:
+  # Movies — pre-encoded, long segments for optimal compression
+  movie:
+    stream: &movie_config
+      type: video_encoded
+      path: "movies/{title}"
+      qualities:
+        medium: *MEDIUM
+        high: *HIGH
+        ultra: *ULTRA
+      distribution:
+        hls:
+          segment_duration: 10   # Longer segments for better VOD compression
+      views:
+        enabled: true
+        window: 30
+
+  # Series — same setup, organized by series ID (episodes in subdirectories)
+  series:
+    stream: &series_config
+      type: video_encoded
+      path: "series/{series_id}"
+      qualities:
+        medium: *MEDIUM
+        high: *HIGH
+        ultra: *ULTRA
+      distribution:
+        hls:
+          segment_duration: 10
+      views:
+        enabled: true
+        window: 30
+
+# ────────────────
+# Channels
+channels:
+  # Movie catalog
+  "/movie/{title}":
+    stream:
+      <<: *movie_config
+
+  # Series catalog
+  "/series/{series_id}":
+    stream:
+      <<: *series_config

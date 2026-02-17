@@ -1,0 +1,113 @@
+# ════════════════════════════════════════════════════════════════════════
+# YouTube-like — User-uploaded VOD platform
+#
+# This configuration sets up a video-on-demand platform where users can
+# upload raw videos that are automatically transcoded into multiple
+# quality levels.
+#
+# Use cases:
+#   - User-generated content platforms
+#   - Video sharing sites
+#   - Educational video libraries
+#
+# How it works:
+#   - Users upload raw videos to the "raw_videos/{video_id}" directory
+#   - Theatrum auto-detects and encodes them into low/medium/high qualities
+#   - Encoded videos are served via HLS at /upload/{video_id}/...
+#   - Pre-encoded content can also be served at /watch/{video_id}/...
+#   - View counts track video popularity
+# ════════════════════════════════════════════════════════════════════════
+
+application:
+  public_path: "http://localhost:8080"
+  all_streams_playlist:
+    enabled: true            # Acts as a video catalog listing all available content
+    path: "all_streams.m3u8"
+
+# Server ports (RTMP port is required in config but unused for VOD-only setups)
+server:
+  http: 8080
+  rtmp: 1935
+
+# ────────────────
+# Quality profiles
+quality_profiles: &QUALITY_PROFILES
+  low: &LOW
+    width: 640
+    height: 360
+    framerate: 24
+    bitrate: "800k"
+    codec: "libx264"
+    audio:
+      bitrate: "96k"
+      codec: "aac"
+
+  medium: &MEDIUM
+    width: 1280
+    height: 720
+    framerate: 30
+    bitrate: "2500k"
+    codec: "libx264"
+    audio:
+      bitrate: "128k"
+      codec: "aac"
+
+  high: &HIGH
+    width: 1920
+    height: 1080
+    framerate: 30
+    bitrate: "5000k"
+    codec: "libx264"
+    audio:
+      bitrate: "192k"
+      codec: "aac"
+
+# ────────────────
+# Stream templates
+stream_templates:
+  # Raw uploads — Theatrum watches video_input_path and encodes automatically
+  uploaded_video:
+    stream: &uploaded_video_config
+      type: video_unencoded
+      video_input_path: "raw_videos/{video_id}"    # Drop raw files here
+      path: "encoded/{video_id}"                   # Encoded output goes here
+      delete_after_encoding: false                 # Keep originals after encoding
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6    # Longer segments for VOD (better compression)
+      views:
+        enabled: true
+        window: 30               # Count a view after 30s of watching
+
+  # Pre-encoded library — content already encoded externally
+  encoded_video:
+    stream: &encoded_video_config
+      type: video_encoded
+      path: "library/{video_id}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6
+      views:
+        enabled: true
+        window: 30
+
+# ────────────────
+# Channels
+channels:
+  # User uploads: raw videos auto-encoded into multiple qualities
+  "/uploaded/{video_id}":
+    stream:
+      <<: *uploaded_video_config
+
+  # Video catalog: pre-encoded content ready to serve
+  "/watch/{video_id}":
+    stream:
+      <<: *encoded_video_config

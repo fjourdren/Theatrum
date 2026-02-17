@@ -1,0 +1,134 @@
+# ════════════════════════════════════════════════════════════════════════
+# Twitch-like — Live streaming platform
+#
+# This configuration sets up a live streaming platform with two tiers:
+#   - Transcoded streams for premium/partner streamers (adaptive bitrate)
+#   - Passthrough streams for regular streamers (lowest latency, single quality)
+#
+# Use cases:
+#   - Gaming live streams
+#   - Live event broadcasting
+#   - Interactive streaming platforms
+#
+# How it works:
+#   - Streamers connect via RTMP using OBS, FFmpeg, or similar software
+#   - Authentication uses XOR-based token validation
+#   - Transcoded streams (/live/{username}) are re-encoded into multiple
+#     qualities, enabling adaptive bitrate for viewers. Recordings are saved automatically.
+#   - Passthrough streams (/stream/{username}) copy codecs as-is with
+#     no transcoding. Lowest latency, minimal CPU, but viewers get only
+#     the quality the streamer sends. No recording.
+#   - Both tiers track concurrent viewers and total views
+#
+# RTMP example (FFmpeg):
+#   ffmpeg -re -i input.mp4 -c copy -f flv "rtmp://localhost/live/myuser"
+#   (publishingName = XOR("myuser", "change-me-to-a-secure-key") as hex)
+# ════════════════════════════════════════════════════════════════════════
+
+application:
+  public_path: "http://localhost:8080"
+
+# Server ports
+server:
+  http: 8080
+  rtmp: 1935
+  rtmp_config:
+    reconnect_delay: 15      # Short delay — streamers may reconnect quickly after drops
+    cleanup_delay: 10        # Clean up files shortly after stream ends
+
+# ────────────────
+# Quality profiles
+quality_profiles: &QUALITY_PROFILES
+  low: &LOW
+    width: 640
+    height: 360
+    framerate: 24
+    bitrate: "800k"
+    codec: "libx264"
+    audio:
+      bitrate: "96k"
+      codec: "aac"
+
+  medium: &MEDIUM
+    width: 1280
+    height: 720
+    framerate: 30
+    bitrate: "2500k"
+    codec: "libx264"
+    audio:
+      bitrate: "128k"
+      codec: "aac"
+
+  high: &HIGH
+    width: 1920
+    height: 1080
+    framerate: 30
+    bitrate: "5000k"
+    codec: "libx264"
+    audio:
+      bitrate: "192k"
+      codec: "aac"
+
+# ────────────────
+# Stream templates
+stream_templates:
+  # Transcoded live — adaptive bitrate, recording enabled
+  # Trade-off: higher CPU usage, but viewers can switch quality levels
+  # Uses -preset veryfast -tune zerolatency for real-time encoding
+  live_transcoded:
+    stream: &live_transcoded_config
+      type: live
+      path: "live/{username}/{%STARTING_DATE%}"
+      live_stream_key: "change-me-to-a-secure-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2    # Short segments for low latency
+          window_size: 5         # 10s of live content in the playlist
+      viewers:
+        enabled: true
+        window: 30
+      views:
+        enabled: true
+        window: 30
+      record:
+        enabled: true
+        path: "recordings/{username}/{%STARTING_DATE%}"  # VOD saved after stream ends
+
+  # Passthrough live — no transcoding, lowest latency
+  # Trade-off: minimal CPU, but viewers get only the streamer's output quality
+  live_passthrough:
+    stream: &live_passthrough_config
+      type: live
+      path: "live/{username}"
+      live_stream_key: "change-me-to-a-secure-key"
+      auth_token_template: "{username}"
+      # No qualities block = passthrough (codec copy)
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3         # 6s of live content — tighter window, lower latency
+      viewers:
+        enabled: true
+        window: 30
+      views:
+        enabled: true
+        window: 30
+      # No recording — passthrough streams are ephemeral
+
+# ────────────────
+# Channels
+channels:
+  # Premium/partner streamers — transcoded with adaptive bitrate and recording
+  "/live/{username}":
+    stream:
+      <<: *live_transcoded_config
+
+  # Regular streamers — passthrough, no recording
+  "/stream/{username}":
+    stream:
+      <<: *live_passthrough_config
