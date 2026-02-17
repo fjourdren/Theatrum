@@ -278,6 +278,10 @@ ffmpeg -re -i input.mp4 -c copy -f flv "rtmp://localhost/user/myuser"
 
 Prometheus metrics are exposed at `GET /metrics` on the HTTP port. The `Metrics` struct in `src/adapters/driven/metrics/metrics.go` holds all Prometheus collectors and is created once by `NewMetrics()`, then injected via `dig` into all components that need instrumentation (HTTP server, RTMP handler, stream processes, encode job queue). All custom metrics are prefixed with `theatrum_`. The `ResponseWriter` wrapper in the same package captures HTTP status codes and bytes written for instrumentation.
 
+Stream-lifecycle metrics (`theatrum_stream_duration_seconds`, `theatrum_ffmpeg_exits_total`, `theatrum_recordings_total`, `theatrum_rtmp_received_bytes_total`, `theatrum_rtmp_received_frames_total`) carry a `stream_path` label with the fully resolved tracking key (e.g., `live/alice/2026-02-14_12-30-45`) for per-stream monitoring.
+
+A custom `ViewerCollector` (`src/adapters/driven/metrics/viewerCollector.go`) implements `prometheus.Collector` to export per-stream viewer and view counts. It queries `ViewerTracker.GetAllStreamStats()` on each Prometheus scrape, emitting `theatrum_stream_viewers` and `theatrum_stream_views` gauges with a `stream_path` label. Using const metrics means stale streams disappear automatically when they are unregistered.
+
 ## Key Dependencies
 
 - `github.com/prometheus/client_golang` - Prometheus metrics

@@ -23,7 +23,7 @@ type Metrics struct {
 
 	// Live streams
 	LiveStreamsActive prometheus.Gauge
-	StreamDuration   prometheus.Histogram
+	StreamDuration   *prometheus.HistogramVec
 	FfmpegExitsTotal *prometheus.CounterVec
 	RecordingsTotal  *prometheus.CounterVec
 
@@ -80,12 +80,12 @@ func NewMetrics() *Metrics {
 		RtmpReceivedBytes: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "theatrum_rtmp_received_bytes_total",
 			Help: "Total bytes received from RTMP streams.",
-		}, []string{"channel", "type"}),
+		}, []string{"channel", "type", "stream_path"}),
 
 		RtmpReceivedFrames: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "theatrum_rtmp_received_frames_total",
 			Help: "Total frames received from RTMP streams.",
-		}, []string{"channel", "type"}),
+		}, []string{"channel", "type", "stream_path"}),
 
 		// Live streams
 		LiveStreamsActive: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -93,21 +93,21 @@ func NewMetrics() *Metrics {
 			Help: "Number of currently active live streams.",
 		}),
 
-		StreamDuration: prometheus.NewHistogram(prometheus.HistogramOpts{
+		StreamDuration: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:    "theatrum_stream_duration_seconds",
 			Help:    "Duration of live streams in seconds.",
 			Buckets: []float64{10, 30, 60, 300, 600, 1800, 3600, 7200, 14400},
-		}),
+		}, []string{"stream_path"}),
 
 		FfmpegExitsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "theatrum_ffmpeg_exits_total",
 			Help: "Total number of FFmpeg process exits.",
-		}, []string{"status"}),
+		}, []string{"status", "stream_path"}),
 
 		RecordingsTotal: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: "theatrum_recordings_total",
 			Help: "Total number of recording operations.",
-		}, []string{"mode", "status"}),
+		}, []string{"mode", "status", "stream_path"}),
 
 		// Encoding
 		EncodeQueueDepth: prometheus.NewGauge(prometheus.GaugeOpts{

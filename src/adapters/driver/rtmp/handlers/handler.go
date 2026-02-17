@@ -34,6 +34,7 @@ type Handler struct {
 	connectionInfo  *models.ConnectionInfo
 	streamKey       string // computed stream key for registry lookup/cleanup
 	channelPattern  string // channel pattern for metric labels (e.g. "/user/{username}")
+	trackingKey     string // fully resolved stream path for per-stream metric labels
 	connMutex       sync.RWMutex
 }
 
@@ -173,6 +174,7 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 
 	// Compute tracking key = fully resolved stream path (for viewer/view tracking)
 	trackingKey, _ := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, mergedVars)
+	h.trackingKey = trackingKey
 
 	log.Printf("Stream output path: %s", localPath)
 
@@ -252,8 +254,8 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 		if err != nil {
 			return err
 		}
-		h.metrics.RtmpReceivedBytes.WithLabelValues(h.channelPattern, "audio").Add(float64(len(data)))
-		h.metrics.RtmpReceivedFrames.WithLabelValues(h.channelPattern, "audio").Inc()
+		h.metrics.RtmpReceivedBytes.WithLabelValues(h.channelPattern, "audio", h.trackingKey).Add(float64(len(data)))
+		h.metrics.RtmpReceivedFrames.WithLabelValues(h.channelPattern, "audio", h.trackingKey).Inc()
 		return h.flvWriter.WriteAudio(timestamp, data)
 	}
 	return nil
@@ -266,8 +268,8 @@ func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
 		if err != nil {
 			return err
 		}
-		h.metrics.RtmpReceivedBytes.WithLabelValues(h.channelPattern, "video").Add(float64(len(data)))
-		h.metrics.RtmpReceivedFrames.WithLabelValues(h.channelPattern, "video").Inc()
+		h.metrics.RtmpReceivedBytes.WithLabelValues(h.channelPattern, "video", h.trackingKey).Add(float64(len(data)))
+		h.metrics.RtmpReceivedFrames.WithLabelValues(h.channelPattern, "video", h.trackingKey).Inc()
 		return h.flvWriter.WriteVideo(timestamp, data)
 	}
 	return nil
