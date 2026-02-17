@@ -27,6 +27,7 @@ src/
     │   │   ├── ffmpegargs/  # Shared FFmpeg argument builders (filter, codecs, stream map)
     │   │   └── repositories/# EncoderPort implementation (VOD encoding)
     │   ├── fileAccess/      # File system operations
+    │   ├── metrics/         # Prometheus metrics collector
     │   └── yamlConfigFile/  # YAML configuration loader
     └── driver/              # Input adapters
         ├── http/            # HTTP/HLS server
@@ -273,8 +274,13 @@ go build -o theatrum ./src/cmd/main.go
 ffmpeg -re -i input.mp4 -c copy -f flv "rtmp://localhost/user/myuser"
 ```
 
+## Metrics
+
+Prometheus metrics are exposed at `GET /metrics` on the HTTP port. The `Metrics` struct in `src/adapters/driven/metrics/metrics.go` holds all Prometheus collectors and is created once by `NewMetrics()`, then injected via `dig` into all components that need instrumentation (HTTP server, RTMP handler, stream processes, encode job queue). All custom metrics are prefixed with `theatrum_`. The `ResponseWriter` wrapper in the same package captures HTTP status codes and bytes written for instrumentation.
+
 ## Key Dependencies
 
+- `github.com/prometheus/client_golang` - Prometheus metrics
 - `github.com/yutopp/go-rtmp` - RTMP protocol implementation
 - `go.uber.org/dig` - Dependency injection
 - `gopkg.in/yaml.v3` - YAML configuration parsing

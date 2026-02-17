@@ -7,7 +7,9 @@ import (
 	"strconv"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"Theatrum/adapters/driven/metrics"
 	"Theatrum/adapters/driver/http/handlers"
 	"Theatrum/adapters/driver/ports"
 	"Theatrum/constants"
@@ -21,25 +23,30 @@ type HttpServer struct {
 	templateService    *services.PathTemplateService
 	registry           *services.LiveStreamRegistry
 	viewerTracker      *services.ViewerTracker
+	metrics            *metrics.Metrics
 	server             *http.Server
 }
 
 // Verify interface implementation
 var _ ports.HttpPort = (*HttpServer)(nil)
 
-func NewHttpServer(applicationService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker) ports.HttpPort {
+func NewHttpServer(applicationService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.HttpPort {
 	return &HttpServer{
 		applicationService: applicationService,
 		streamService:      streamService,
 		templateService:    templateService,
 		registry:           registry,
 		viewerTracker:      viewerTracker,
+		metrics:            m,
 	}
 }
 
 func (s *HttpServer) BuildRouter() *mux.Router {
 	// Create Gorilla Mux router
 	r := mux.NewRouter()
+
+	// Expose Prometheus metrics endpoint
+	r.Handle("/metrics", promhttp.Handler()).Methods("GET")
 
 	// Handle all streams playlist if enabled
 	if s.applicationService.GetApplication().AllStreamsPlaylist.Enabled {
@@ -57,7 +64,7 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		// Create a subrouter for this channel
 		channelRouter := r.PathPrefix(path).Subrouter()
 		// Create the stream handler
-		handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry, s.viewerTracker)
+    handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry, s.viewerTracker, s.metrics)
 		
 		// Handle master playlist
 		channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
@@ -92,9 +99,18 @@ func (s *HttpServer) StartHttpServer() error {
 	port := s.applicationService.GetServer().HTTPPort
 	addr := "localhost:" + strconv.Itoa(port)
 	
+	router := s.BuildRouter()
+
+	// Wrap with in-flight gauge middleware
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s.metrics.HttpRequestsInFlight.Inc()
+		defer s.metrics.HttpRequestsInFlight.Dec()
+		router.ServeHTTP(w, r)
+	})
+
 	s.server = &http.Server{
 		Addr:    ":" + strconv.Itoa(port),
-		Handler: s.BuildRouter(),
+		Handler: handler,
 	}
 
 	log.Printf("Starting streaming server on http://%s", addr)

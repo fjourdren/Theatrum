@@ -11,6 +11,7 @@ import (
 	"github.com/yutopp/go-rtmp"
 	"github.com/yutopp/go-rtmp/message"
 
+	"Theatrum/adapters/driven/metrics"
 	rtmpconfig "Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/adapters/driver/rtmp/flv"
 	stream "Theatrum/adapters/driver/rtmp/management"
@@ -25,21 +26,24 @@ type Handler struct {
 	rtmpAuthService *services.RtmpAuthService
 	templateService *services.PathTemplateService
 	registry        *services.LiveStreamRegistry
+	metrics         *metrics.Metrics
 	streamProcess   *stream.StreamProcess
 	streamManager   *stream.Manager
 	config          rtmpconfig.Config
 	flvWriter       *flv.Writer
 	connectionInfo  *models.ConnectionInfo
 	streamKey       string // computed stream key for registry lookup/cleanup
+	channelPattern  string // channel pattern for metric labels (e.g. "/user/{username}")
 	connMutex       sync.RWMutex
 }
 
 // NewHandler creates a new RTMP handler with injected dependencies
-func NewHandler(rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, manager *stream.Manager, cfg rtmpconfig.Config) *Handler {
+func NewHandler(rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, manager *stream.Manager, cfg rtmpconfig.Config, m *metrics.Metrics) *Handler {
 	return &Handler{
 		rtmpAuthService: rtmpAuthService,
 		templateService: templateService,
 		registry:        registry,
+		metrics:         m,
 		streamManager:   manager,
 		config:          cfg,
 	}
@@ -48,23 +52,29 @@ func NewHandler(rtmpAuthService *services.RtmpAuthService, templateService *serv
 // RTMP handler methods
 func (h *Handler) OnServe(conn *rtmp.Conn) {
 	log.Printf("New RTMP connection established")
+	h.metrics.RtmpConnectionsTotal.Inc()
+	h.metrics.RtmpConnectionsActive.Inc()
 }
 
 func (h *Handler) OnConnect(timestamp uint32, cmd *message.NetConnectionConnect) error {
 	log.Printf("RTMP connection from %s", cmd.Command.TCURL)
 
 	// Extract channel configuration and variables from TCURL using domain service
-	stream, vars, ok := h.rtmpAuthService.ExtractChannel(cmd.Command.TCURL)
+	stream, vars, pattern, ok := h.rtmpAuthService.ExtractChannel(cmd.Command.TCURL)
 	if !ok {
 		log.Printf("Failed to extract channel from TCURL '%s'", cmd.Command.TCURL)
+		h.metrics.RtmpAuthTotal.WithLabelValues("failure").Inc()
 		return fmt.Errorf("failed to extract channel from TCURL: %s", cmd.Command.TCURL)
 	}
 
 	// Check if TCURL is authorized
 	if !h.rtmpAuthService.IsAuthorized(cmd.Command.TCURL) {
 		log.Printf("Unauthorized TCURL '%s' in OnConnect", cmd.Command.TCURL)
+		h.metrics.RtmpAuthTotal.WithLabelValues("failure").Inc()
 		return fmt.Errorf("unauthorized TCURL: %s", cmd.Command.TCURL)
 	}
+
+	h.channelPattern = pattern
 
 	// Store connection information for this handler instance
 	h.connMutex.Lock()
@@ -104,9 +114,12 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	// Validate authentication using domain service
 	if err := h.rtmpAuthService.ValidateAuthentication(connInfo.Stream, connInfo.Vars, cmd.PublishingName); err != nil {
 		log.Printf("Authentication failed for TCURL %s: %v", connInfo.TCURL, err)
+		h.metrics.RtmpAuthTotal.WithLabelValues("failure").Inc()
 		return err
 	}
 
+	h.metrics.RtmpAuthTotal.WithLabelValues("success").Inc()
+	h.metrics.LiveStreamsActive.Inc()
 	log.Printf("Publishing to TCURL: %s", connInfo.TCURL)
 
 	// Generate builtin values for this stream session
@@ -162,7 +175,8 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	trackingKey, _ := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, mergedVars)
 
 	log.Printf("Stream output path: %s", localPath)
-	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream, resolvedRecordPath, trackingKey)
+
+	streamProcess, err := h.streamManager.GetOrCreateStream(connInfo.TCURL, localPath, connInfo.Stream, resolvedRecordPath, trackingKey, h.metrics)
 	if err != nil {
 		log.Printf("Failed to create stream for TCURL %s: %v", connInfo.TCURL, err)
 		return err
@@ -175,6 +189,8 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 }
 
 func (h *Handler) OnClose() {
+	h.metrics.RtmpConnectionsActive.Dec()
+
 	if h.streamProcess != nil {
 		log.Printf("Connection closed for: %s", h.streamProcess.InputPath())
 
@@ -185,6 +201,7 @@ func (h *Handler) OnClose() {
 			if h.streamProcess.IsActive() {
 				log.Printf("No reconnection detected for %s, stopping stream", h.streamProcess.InputPath())
 				h.streamProcess.Stop(h.config)
+				h.metrics.LiveStreamsActive.Dec()
 
 				// Unregister builtin vars after stream definitively stops
 				if streamKey != "" {
@@ -235,6 +252,8 @@ func (h *Handler) OnAudio(timestamp uint32, payload io.Reader) error {
 		if err != nil {
 			return err
 		}
+		h.metrics.RtmpReceivedBytes.WithLabelValues(h.channelPattern, "audio").Add(float64(len(data)))
+		h.metrics.RtmpReceivedFrames.WithLabelValues(h.channelPattern, "audio").Inc()
 		return h.flvWriter.WriteAudio(timestamp, data)
 	}
 	return nil
@@ -247,6 +266,8 @@ func (h *Handler) OnVideo(timestamp uint32, payload io.Reader) error {
 		if err != nil {
 			return err
 		}
+		h.metrics.RtmpReceivedBytes.WithLabelValues(h.channelPattern, "video").Add(float64(len(data)))
+		h.metrics.RtmpReceivedFrames.WithLabelValues(h.channelPattern, "video").Inc()
 		return h.flvWriter.WriteVideo(timestamp, data)
 	}
 	return nil

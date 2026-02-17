@@ -10,6 +10,7 @@ import (
 
 	ffmpegEncoderRepository "Theatrum/adapters/driven/ffmpegEncoder/repositories"
 	fileAccessRepository "Theatrum/adapters/driven/fileAccess/repositories"
+	"Theatrum/adapters/driven/metrics"
 	yamlConfigFileRepository "Theatrum/adapters/driven/yamlConfigFile/repositories"
 	httpAdapter "Theatrum/adapters/driver/http"
 	"Theatrum/adapters/driver/ports"
@@ -31,6 +32,9 @@ func main() {
 
 	// Configure dependencies injection
 	container := dig.New()
+
+	// Provide metrics
+	container.Provide(metrics.NewMetrics)
 
 	// Provide adapters repositories
 	container.Provide(func() repositories.ConfigurationPort {
@@ -64,8 +68,8 @@ func main() {
 	})
 
 	// Provide job queue
-	container.Provide(func(encodeService *services.EncodeService, storage repositories.StoragePort) *jobs.EncodeJobQueue {
-		return jobs.NewEncodeJobQueue(encodeService, storage)
+	container.Provide(func(encodeService *services.EncodeService, storage repositories.StoragePort, m *metrics.Metrics) *jobs.EncodeJobQueue {
+		return jobs.NewEncodeJobQueue(encodeService, storage, m)
 	})
 
 	// Provide video detector
@@ -79,13 +83,13 @@ func main() {
 	})
 
 	// Provide HTTP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker) ports.HttpPort {
-		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry, viewerTracker)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.HttpPort {
+		return httpAdapter.NewHttpServer(appService, streamService, templateService, registry, viewerTracker, m)
 	})
 
 	// Provide RTMP server
-	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker) ports.RtmpPort {
-		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker)
+	container.Provide(func(appService *services.ApplicationService, streamService *services.StreamService, rtmpAuthService *services.RtmpAuthService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, m *metrics.Metrics) ports.RtmpPort {
+		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker, m)
 	})
 
 	// Start the application and jobs
@@ -96,7 +100,20 @@ func main() {
 		videoDetector *jobs.VideoUnencodedDetector,
 		httpServer ports.HttpPort,
 		rtmpServer ports.RtmpPort,
+		m *metrics.Metrics,
 	) {
+		// Set channel metrics from config
+		channels := appService.GetChannels()
+		if channels != nil {
+			typeCounts := make(map[string]float64)
+			for _, ch := range *channels {
+				typeCounts[string(ch.Type)]++
+			}
+			for t, count := range typeCounts {
+				m.ChannelsConfigured.WithLabelValues(t).Set(count)
+			}
+		}
+
 		// Start the encode queue
 		encodeQueue.Start()
 
