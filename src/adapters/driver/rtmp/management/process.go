@@ -239,6 +239,11 @@ func (sp *StreamProcess) saveRecording() {
 		if err := generateMasterPlaylistWrapper(recordDir); err != nil {
 			log.Printf("Error generating master playlist wrapper for recording: %v", err)
 		}
+		// Move views.txt to recording directory
+		viewsSrc := filepath.Join(sp.streamRootDir, constants.ViewsFile)
+		if _, err := os.Stat(viewsSrc); err == nil {
+			os.Rename(viewsSrc, filepath.Join(recordDir, constants.ViewsFile))
+		}
 	}
 
 	// Remove original stream root directory
