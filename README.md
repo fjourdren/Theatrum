@@ -338,6 +338,11 @@ cd theatrum
 
 2. Configure your server:
    - Copy `config.yml.example` to `config.yml`
+   - Or start from a use-case-specific example in [`examples/`](examples/):
+     - [`youtube-like.yml`](examples/youtube-like.yml) — User-uploaded VOD platform
+     - [`netflix-like.yml`](examples/netflix-like.yml) — Premium pre-encoded VOD
+     - [`twitch-like.yml`](examples/twitch-like.yml) — Live streaming platform
+     - [`iptv-like.yml`](examples/iptv-like.yml) — Linear TV / IPTV distribution
    - Adjust the configuration according to your needs:
      - Set up your quality profiles
      - Configure storage paths

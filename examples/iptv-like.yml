@@ -1,0 +1,89 @@
+# ════════════════════════════════════════════════════════════════════════
+# IPTV-like — Linear TV / IPTV distribution
+#
+# This configuration sets up an IPTV-style distribution system for
+# continuous, always-on streams. All channels use passthrough (codec copy)
+# for maximum efficiency — the assumption is that the source feed is
+# already properly encoded by broadcast equipment or an upstream encoder.
+#
+# Use cases:
+#   - IPTV channel distribution
+#   - Internet radio stations
+#   - 24/7 live camera feeds
+#   - Digital signage networks
+#
+# How it works:
+#   - TV/radio sources push RTMP streams to Theatrum
+#   - Theatrum converts them to HLS with no re-encoding (passthrough)
+#   - All streams are listed in the all_streams playlist (channel guide)
+#   - Longer reconnect/cleanup delays tolerate brief feed interruptions
+#   - No recording — linear content is ephemeral by nature
+#   - Viewer tracking monitors audience size per channel
+#
+# RTMP example (restreaming an existing feed):
+#   ffmpeg -re -i udp://239.1.1.1:5000 -c copy -f flv "rtmp://localhost/tv/channel1"
+# ════════════════════════════════════════════════════════════════════════
+
+application:
+  public_path: "http://localhost:8080"
+  all_streams_playlist:
+    enabled: true            # Acts as an IPTV channel listing / EPG-like index
+    path: "all_streams.m3u8"
+
+# Server ports
+server:
+  http: 8080
+  rtmp: 1935
+  rtmp_config:
+    reconnect_delay: 60      # Longer tolerance — TV feeds may have brief outages
+    cleanup_delay: 60        # Keep files around longer in case the feed reconnects
+
+# ────────────────
+# Quality profiles — none needed, all streams use passthrough (codec copy)
+
+# ────────────────
+# Stream templates
+stream_templates:
+  # TV channel — passthrough, slightly longer segments for stability
+  tv_channel:
+    stream: &tv_channel_config
+      type: live
+      path: "tv/{channel_name}"
+      live_stream_key: "change-me-to-a-secure-key"
+      auth_token_template: "{channel_name}"
+      # No qualities block = passthrough (codec copy from source encoder)
+      distribution:
+        hls:
+          segment_duration: 4    # Slightly longer than live streaming for stability
+          window_size: 5         # 20s of content in the playlist
+      viewers:
+        enabled: true
+        window: 30
+
+  # Radio channel — audio-only passthrough
+  radio_channel:
+    stream: &radio_channel_config
+      type: live
+      path: "radio/{station_name}"
+      live_stream_key: "change-me-to-a-secure-key"
+      auth_token_template: "{station_name}"
+      distribution:
+        hls:
+          segment_duration: 4
+          window_size: 3         # Smaller window sufficient for audio
+      viewers:
+        enabled: true
+        window: 30
+
+# ────────────────
+# Channels
+channels:
+  # TV channels
+  "/tv/{channel_name}":
+    stream:
+      <<: *tv_channel_config
+
+  # Radio stations
+  "/radio/{station_name}":
+    stream:
+      <<: *radio_channel_config
