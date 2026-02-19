@@ -100,7 +100,7 @@ func TestCreateFFmpegCommand_HLSPassthrough(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeHLS)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeHLS)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-f hls") {
@@ -125,7 +125,7 @@ func TestCreateFFmpegCommand_HLSMultiQuality(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeHLS)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeHLS)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-f hls") {
@@ -147,7 +147,7 @@ func TestCreateFFmpegCommand_DASHPassthrough(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeDASH)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeDASH)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-f dash") {
@@ -175,7 +175,7 @@ func TestCreateFFmpegCommand_DASHMultiQuality(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeDASH)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeDASH)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-f dash") {
@@ -198,7 +198,7 @@ func TestCreateFFmpegCommand_DualPassthrough(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeDual)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeDual)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-f dash") {
@@ -224,7 +224,7 @@ func TestCreateFFmpegCommand_DualMultiQuality(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeDual)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeDual)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-f dash") {
@@ -247,7 +247,7 @@ func TestCreateFFmpegCommand_DASHWithRecording(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeDASH)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeDASH)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-extra_window_size 999999") {
@@ -264,10 +264,136 @@ func TestCreateFFmpegCommand_DASHWithoutRecording(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	cmd := createFFmpegCommand(ctx, "/tmp/output", stream, OutputModeDASH)
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", stream, OutputModeDASH)
 
 	args := strings.Join(cmd.Args, " ")
 	if !strings.Contains(args, "-extra_window_size 0") {
 		t.Errorf("expected -extra_window_size 0 for non-recording, got: %s", args)
 	}
+}
+
+// --- Tests for URL input (restream) ---
+
+func TestCreateFFmpegCommand_URLInput_HLSPassthrough(t *testing.T) {
+	s := &models.Stream{
+		Distribution: models.Distribution{
+			Hls: &models.Hls{SegmentDuration: 2, WindowSize: 3},
+		},
+	}
+
+	ctx := context.Background()
+	cmd := CreateFFmpegCommand(ctx, "rtmp://external/live/key", "/tmp/output", s, OutputModeHLS)
+
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "-i rtmp://external/live/key") {
+		t.Errorf("expected -i <url> in command, got: %s", args)
+	}
+	if strings.Contains(args, "-f flv") {
+		t.Errorf("did not expect -f flv with URL input, got: %s", args)
+	}
+	if strings.Contains(args, "pipe:0") {
+		t.Errorf("did not expect pipe:0 with URL input, got: %s", args)
+	}
+	if !strings.Contains(args, "-f hls") {
+		t.Errorf("expected -f hls in command, got: %s", args)
+	}
+}
+
+func TestCreateFFmpegCommand_URLInput_HLSMultiQuality(t *testing.T) {
+	s := &models.Stream{
+		Qualities: map[string]models.Quality{
+			"low": {Width: 640, Height: 360, Bitrate: "800k", Codec: "libx264", Audio: models.Audio{Bitrate: "96k", Codec: "aac"}},
+		},
+		Distribution: models.Distribution{
+			Hls: &models.Hls{SegmentDuration: 2, WindowSize: 3},
+		},
+	}
+
+	ctx := context.Background()
+	cmd := CreateFFmpegCommand(ctx, "rtmp://external/live/key", "/tmp/output", s, OutputModeHLS)
+
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "-i rtmp://external/live/key") {
+		t.Errorf("expected -i <url> in command, got: %s", args)
+	}
+	if !strings.Contains(args, "-var_stream_map") {
+		t.Errorf("expected -var_stream_map in multi-quality command, got: %s", args)
+	}
+	if !strings.Contains(args, "-master_pl_name") {
+		t.Errorf("expected -master_pl_name in multi-quality command, got: %s", args)
+	}
+}
+
+func TestCreateFFmpegCommand_URLInput_DASHPassthrough(t *testing.T) {
+	s := &models.Stream{
+		Distribution: models.Distribution{
+			Dash: &models.Dash{SegmentDuration: 4, WindowSize: 5},
+		},
+	}
+
+	ctx := context.Background()
+	cmd := CreateFFmpegCommand(ctx, "rtmp://external/live/key", "/tmp/output", s, OutputModeDASH)
+
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "-i rtmp://external/live/key") {
+		t.Errorf("expected -i <url> in command, got: %s", args)
+	}
+	if !strings.Contains(args, "-f dash") {
+		t.Errorf("expected -f dash in command, got: %s", args)
+	}
+}
+
+func TestCreateFFmpegCommand_URLInput_DualPassthrough(t *testing.T) {
+	s := &models.Stream{
+		Distribution: models.Distribution{
+			Hls:  &models.Hls{SegmentDuration: 2, WindowSize: 3},
+			Dash: &models.Dash{SegmentDuration: 2, WindowSize: 3},
+		},
+	}
+
+	ctx := context.Background()
+	cmd := CreateFFmpegCommand(ctx, "rtmp://external/live/key", "/tmp/output", s, OutputModeDual)
+
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "-i rtmp://external/live/key") {
+		t.Errorf("expected -i <url> in command, got: %s", args)
+	}
+	if !strings.Contains(args, "-hls_playlist 1") {
+		t.Errorf("expected -hls_playlist 1 in dual mode, got: %s", args)
+	}
+}
+
+func TestCreateFFmpegCommand_EmptySourceURL_StdinMode(t *testing.T) {
+	s := &models.Stream{
+		Distribution: models.Distribution{
+			Hls: &models.Hls{SegmentDuration: 2, WindowSize: 3},
+		},
+	}
+
+	ctx := context.Background()
+	cmd := CreateFFmpegCommand(ctx, "", "/tmp/output", s, OutputModeHLS)
+
+	args := strings.Join(cmd.Args, " ")
+	if !strings.Contains(args, "-f flv") {
+		t.Errorf("expected -f flv in stdin mode, got: %s", args)
+	}
+	if !strings.Contains(args, "-i pipe:0") {
+		t.Errorf("expected -i pipe:0 in stdin mode, got: %s", args)
+	}
+}
+
+func TestInputArgs(t *testing.T) {
+	t.Run("with URL", func(t *testing.T) {
+		args := inputArgs("rtmp://server/live")
+		if len(args) != 2 || args[0] != "-i" || args[1] != "rtmp://server/live" {
+			t.Errorf("expected [-i rtmp://server/live], got %v", args)
+		}
+	})
+
+	t.Run("empty URL", func(t *testing.T) {
+		args := inputArgs("")
+		if len(args) != 4 || args[0] != "-f" || args[1] != "flv" || args[2] != "-i" || args[3] != "pipe:0" {
+			t.Errorf("expected [-f flv -i pipe:0], got %v", args)
+		}
+	})
 }

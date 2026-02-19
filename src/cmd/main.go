@@ -14,6 +14,7 @@ import (
 	yamlConfigFileRepository "Theatrum/adapters/driven/yamlConfigFile/repositories"
 	httpAdapter "Theatrum/adapters/driver/http"
 	"Theatrum/adapters/driver/ports"
+	restreamAdapter "Theatrum/adapters/driver/restream"
 	rtmpAdapter "Theatrum/adapters/driver/rtmp"
 	"Theatrum/domain/jobs"
 	"Theatrum/domain/repositories"
@@ -52,7 +53,7 @@ func main() {
 	container.Provide(func(configPort repositories.ConfigurationPort, storage repositories.StoragePort, templateService *services.PathTemplateService) (*services.ApplicationService, error) {
 		application, server, channels, err := configPort.Load("config.yml")
 		if err != nil {
-			log.Printf("error loading configuration: %v", err)
+			log.Printf("Error loading configuration: %v", err)
 			return nil, err
 		}
 		return services.NewApplicationService(application, server, channels, storage, templateService), nil
@@ -98,6 +99,11 @@ func main() {
 		return rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker, m)
 	})
 
+	// Provide Restream manager
+	container.Provide(func(appService *services.ApplicationService, templateService *services.PathTemplateService, registry *services.LiveStreamRegistry, viewerTracker *services.ViewerTracker, m *metrics.Metrics) ports.RestreamPort {
+		return restreamAdapter.NewRestreamManager(appService, templateService, registry, viewerTracker, m)
+	})
+
 	// Start the application and jobs
 	err := container.Invoke(func(
 		appService *services.ApplicationService,
@@ -106,6 +112,7 @@ func main() {
 		videoDetector *jobs.VideoUnencodedDetector,
 		httpServer ports.HttpPort,
 		rtmpServer ports.RtmpPort,
+		restreamManager ports.RestreamPort,
 		m *metrics.Metrics,
 	) {
 		// Set channel metrics from config
@@ -150,6 +157,9 @@ func main() {
 			rtmpErrors <- rtmpServer.StartRtmpServer()
 		}()
 
+		// Start restream manager (pulls from external URLs)
+		restreamManager.Start()
+
 		// Listen for an interrupt or terminate signal from the OS
 		osSignals := make(chan os.Signal, 1)
 		signal.Notify(osSignals, os.Interrupt, syscall.SIGTERM)
@@ -178,6 +188,8 @@ func main() {
 		if err := rtmpServer.ShutdownRtmpServer(); err != nil {
 			log.Printf("Error during RTMP server shutdown: %v", err)
 		}
+
+		restreamManager.Stop()
 	})
 
 	if err != nil {

@@ -81,7 +81,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set cache control headers based on stream type and file type
-	isLive := h.stream.Type == models.StreamTypeLive
+	isLive := h.stream.Type == models.StreamTypeLive || h.stream.Type == models.StreamTypeRestream
 	switch ext {
 	case ".m3u8", ".mpd":
 		if isLive {
@@ -108,10 +108,13 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Compute tracking key for viewer/view tracking
 	var trackingKey string
 
-	// For live streams, look up pre-resolved builtin vars from the registry
-	if h.stream.Type == models.StreamTypeLive {
+	// For live and restream streams, look up pre-resolved builtin vars from the registry
+	if h.stream.Type == models.StreamTypeLive || h.stream.Type == models.StreamTypeRestream {
 		// Compute stream key (same formula as RTMP side: resolve user vars only)
-		streamKey, _ := h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+		streamKey, err := h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+		if err != nil {
+			log.Printf("Error resolving stream key template: %v", err)
+		}
 
 		if builtinVars, ok := h.registry.GetBuiltinVars(streamKey); ok {
 			for k, v := range builtinVars {
@@ -121,10 +124,17 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// If not found → stream offline → builtins unresolved → file won't exist → 404
 
 		// Tracking key = fully resolved stream path
-		trackingKey, _ = h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+		trackingKey, err = h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+		if err != nil {
+			log.Printf("Error resolving tracking key template: %v", err)
+		}
 	} else {
 		// For non-live streams, tracking key = resolved stream path
-		trackingKey, _ = h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+		var err error
+		trackingKey, err = h.templateService.ReplacePlaceholders(h.stream.Path, vars)
+		if err != nil {
+			log.Printf("Error resolving tracking key template: %v", err)
+		}
 	}
 
 	// Handle viewers.txt request
@@ -162,6 +172,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Get the storage path
 	storagePath, err := h.streamService.GetStreamStoragePath(h.stream, vars)
 	if err != nil {
+		log.Printf("Error getting stream storage path: %v", err)
 		http.Error(w, "Invalid path", http.StatusBadRequest)
 		return
 	}
@@ -176,7 +187,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Determine metric labels
 	streamType := "vod"
-	if h.stream.Type == models.StreamTypeLive {
+	if h.stream.Type == models.StreamTypeLive || h.stream.Type == models.StreamTypeRestream {
 		streamType = "live"
 	}
 	fileType := "other"

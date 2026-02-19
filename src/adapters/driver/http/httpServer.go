@@ -96,10 +96,10 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 }
 
 func (s *HttpServer) StartHttpServer() error {
-	log.Printf("=== HTTP SERVER ===")
-
 	port := s.applicationService.GetServer().HTTPPort
 	addr := "localhost:" + strconv.Itoa(port)
+
+	log.Printf("=== HTTP SERVER (port %d) ===", port)
 	
 	router := s.BuildRouter()
 

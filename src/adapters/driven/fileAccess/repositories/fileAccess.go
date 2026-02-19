@@ -218,8 +218,6 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 			return nil // Continue walking
 		}
 
-		log.Printf("Walking %s (depth: %d)", path, currentDepth)
-
 		// For files, check if they match our pattern
 		if !re.MatchString(path) {
 			return nil // not of interest
@@ -275,7 +273,7 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 	})
 
 	if err != nil {
-		fmt.Printf("Error searching files: %s\n", err)
+		log.Printf("Error searching files: %s", err)
 		return nil, nil, err
 	}
 

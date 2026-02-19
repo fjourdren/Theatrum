@@ -8,6 +8,7 @@ Theatrum is a streaming server built in Go supporting:
 - HLS (HTTP Live Streaming) protocol
 - MPEG-DASH protocol (standalone or dual-mode with HLS)
 - Live RTMP streaming
+- Restreaming from external URLs (RTMP or any FFmpeg-compatible protocol)
 
 ## Architecture
 
@@ -33,6 +34,7 @@ src/
     │   └── yamlConfigFile/  # YAML configuration loader
     └── driver/              # Input adapters
         ├── http/            # HTTP/HLS/DASH server
+        ├── restream/        # Restream manager (pull from external URLs)
         ├── rtmp/            # RTMP streaming server
         └── ports/           # Port interfaces for drivers
 ```
@@ -87,6 +89,37 @@ Live streams use configurable XOR-based authentication via `auth_token_template`
 **Required fields for live streams:**
 - `live_stream_key` - Secret key for XOR operation
 - `auth_token_template` - Template specifying which URL variables to use (e.g., `{username}`, `{room_id}{username}`)
+
+## Restream Implementation
+
+### Overview
+
+Restreams pull from an external URL (RTMP or any FFmpeg-compatible protocol) and output HLS/DASH segments. Unlike live streams (push model via RTMP), restreams use a pull model where FFmpeg directly reads from the source URL.
+
+```
+External URL → FFmpeg -i <url> → HLS/DASH segments → HTTP server serves to viewers
+```
+
+### Components
+
+| Component | Path | Description |
+|-----------|------|-------------|
+| RestreamManager | `adapters/driver/restream/restreamManager.go` | Manages all restream channels |
+| RestreamPort | `adapters/driver/ports/restream.go` | Port interface |
+
+### Behavior
+
+- **Auto-start**: All restream channels start on server boot
+- **Auto-reconnect**: Exponential backoff (1s → 2s → 4s → ... → 30s max) on source failure; resets after 30s of successful streaming
+- **No user variables**: Channel paths must be literal (no `{var}` placeholders), only `{%FUNC%}` builtins allowed
+- **Recording/viewers/views**: Same support as live streams
+- **FFmpeg command**: Reuses the same command builders as live streams, but with `-i <url>` instead of `-f flv -i pipe:0`
+
+### Config Constraints
+
+- `source_url` required, non-empty
+- Must NOT have `live_stream_key`, `auth_token_template`, `video_input_path`, `delete_after_encoding`
+- Channel key, `path`, and `record.path` must not contain `{var}` placeholders (only `{%FUNC%}` builtins)
 
 ## Configuration
 
@@ -203,6 +236,31 @@ channels:
         dash:
           segment_duration: 2  # Must match HLS segment_duration in dual mode
           window_size: 5
+
+  # Restream: pull from external URL (passthrough)
+  "/restream/mystream":
+    stream:
+      type: restream
+      source_url: "rtmp://external-server/live/stream_key"
+      path: "restream/mystream"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+
+  # Restream with recording
+  "/restream/recorded":
+    stream:
+      type: restream
+      source_url: "rtmp://external-server/live/stream_key"
+      path: "restream/recorded/{%STARTING_DATE%}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/restream/{%STARTING_DATE%}"
 ```
 
 ### Distribution Modes
@@ -313,6 +371,7 @@ Theatrum tracks concurrent viewers and total views per stream by monitoring `.ts
 - `video_encoded` - Pre-encoded VOD content
 - `video_unencoded` - Raw videos to be encoded
 - `live` - Live RTMP streams (passthrough or multi-quality transcoding)
+- `restream` - Pull from external URLs and re-broadcast (passthrough or multi-quality)
 
 ## Development
 
