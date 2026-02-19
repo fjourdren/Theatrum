@@ -43,6 +43,7 @@ data/
 # Build output
 build/
 main
+theatrum
 
 # Config files
 config.yml
@@ -51,4 +52,4 @@ config.yml
 /cmd/
 
 # AI
-.claude/
+.claude/settings.local.json

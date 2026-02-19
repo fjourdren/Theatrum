@@ -221,15 +221,13 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 		log.Printf("Walking %s (depth: %d)", path, currentDepth)
 
 		// For files, check if they match our pattern
-		// Use forward slashes for regex matching on every platform
-		slashPath := filepath.ToSlash(path)
-		if !re.MatchString(slashPath) {
+		if !re.MatchString(path) {
 			return nil // not of interest
 		}
 
 		// Check filename if specified in pattern
 		if hasFilename {
-			pathFilename := filepath.Base(slashPath)
+			pathFilename := filepath.Base(path)
 			patternFilename := filepath.Base(pattern)
 			if pathFilename != patternFilename {
 				return nil // filename doesn't match
@@ -252,7 +250,7 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 			}
 		}
 
-		matches := re.FindStringSubmatch(slashPath)
+		matches := re.FindStringSubmatch(path)
 		if len(matches) != len(varNames)+1 {
 			// Should never happen, but be defensive
 			return nil

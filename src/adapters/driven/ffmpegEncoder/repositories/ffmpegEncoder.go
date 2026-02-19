@@ -1,7 +1,7 @@
 package repositories
 
 import (
-	"Theatrum/adapters/driven/ffmpegEncoder/ffmpegargs"
+	"Theatrum/shared/ffmpegargs"
 	"Theatrum/constants"
 	"Theatrum/domain/models"
 	"Theatrum/domain/repositories"
