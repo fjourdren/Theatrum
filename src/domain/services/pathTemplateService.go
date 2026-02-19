@@ -46,9 +46,9 @@ func (s *PathTemplateService) RegisterBuiltinFunc(name string, fn BuiltinFunc) {
 }
 
 func (s *PathTemplateService) ExtractValues(template string, input string) (map[string]string, error) {
-	// Normalize paths to use forward slashes
-	template = filepath.ToSlash(template)
-	input = filepath.ToSlash(input)
+	// Normalize paths to use forward slashes (strings.ReplaceAll works cross-platform)
+	template = strings.ReplaceAll(template, "\\", "/")
+	input = strings.ReplaceAll(input, "\\", "/")
 
 	// Find all {var} placeholders
 	varRegex := regexp.MustCompile(constants.PlaceholderRegex)
@@ -91,9 +91,9 @@ func (s *PathTemplateService) ExtractValues(template string, input string) (map[
 }
 
 func (s *PathTemplateService) MatchesTemplate(template string, input string) bool {
-	// Normalize paths to use forward slashes
-	template = filepath.ToSlash(template)
-	input = filepath.ToSlash(input)
+	// Normalize paths to use forward slashes (strings.ReplaceAll works cross-platform)
+	template = strings.ReplaceAll(template, "\\", "/")
+	input = strings.ReplaceAll(input, "\\", "/")
 
 	// Find all {var} placeholders
 	varRegex := regexp.MustCompile(constants.PlaceholderRegex)
@@ -173,8 +173,9 @@ func (s *PathTemplateService) ReplacePlaceholders(text string, vars map[string]s
 		return "", err
 	}
 
-	// Use ToSlash to ensure forward slashes are used, then clean the path
-	return filepath.ToSlash(filepath.Clean(result)), nil
+	// Clean the path and ensure forward slashes
+	result = filepath.Clean(result)
+	return strings.ReplaceAll(result, "\\", "/"), nil
 }
 
 // GenerateBuiltinVars scans a template for {%FUNC%} patterns and calls each
