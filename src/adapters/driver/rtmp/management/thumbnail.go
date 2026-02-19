@@ -77,7 +77,7 @@ func (tg *ThumbnailGenerator) generate(ctx context.Context) {
 	}
 
 	outputPath := filepath.Join(tg.streamRootDir, constants.ThumbnailFile)
-	tmpPath := outputPath + ".tmp"
+	tmpPath := outputPath[:len(outputPath)-len(filepath.Ext(outputPath))] + ".tmp" + filepath.Ext(outputPath)
 
 	args := tg.buildFFmpegArgs(segment, tmpPath)
 
