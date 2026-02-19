@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: src/go.sum
+
+      - name: Run tests
+        working-directory: src
+        run: go test ./...
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: src/go.sum
+
+      - name: Build
+        working-directory: src
+        run: CGO_ENABLED=0 go build -o theatrum ./cmd/main.go
+
+  release:
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: src/go.sum
+
+      - name: Cross-compile binaries
+        working-directory: src
+        run: |
+          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o ../theatrum-linux-amd64 ./cmd/main.go
+          CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -o ../theatrum-linux-arm64 ./cmd/main.go
+          CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -o ../theatrum-windows-amd64.exe ./cmd/main.go
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          body: Automated build from the latest push to main.
+          make_latest: true
+          files: |
+            theatrum-linux-amd64
+            theatrum-linux-arm64
+            theatrum-windows-amd64.exe
