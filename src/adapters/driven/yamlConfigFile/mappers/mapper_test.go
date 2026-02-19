@@ -122,6 +122,7 @@ func TestToDomainStream(t *testing.T) {
 			Record:            entities.Record{Enabled: true, Path: "recordings/{username}"},
 			Viewers:           entities.Viewers{Enabled: true, Window: 30},
 			Views:             entities.Views{Enabled: true, Window: 15},
+			Thumbnail:         entities.Thumbnail{Enabled: true, Interval: 5},
 		}
 
 		result := ToDomainStream(stream)
@@ -151,6 +152,12 @@ func TestToDomainStream(t *testing.T) {
 		}
 		if result.Views.Window != 15 {
 			t.Errorf("expected Views.Window 15, got %d", result.Views.Window)
+		}
+		if !result.Thumbnail.Enabled {
+			t.Error("expected Thumbnail.Enabled true")
+		}
+		if result.Thumbnail.Interval != 5 {
+			t.Errorf("expected Thumbnail.Interval 5, got %d", result.Thumbnail.Interval)
 		}
 	})
 

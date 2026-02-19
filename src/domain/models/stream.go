@@ -28,9 +28,10 @@ type Stream struct {
 	// Specific fields for live streams
 	LiveStreamKey     string
 	AuthTokenTemplate string // Template for XOR auth input, uses {var} placeholders
-	Record            Record // Recording settings (live and restream streams only)
-	Viewers           Viewers // Concurrent viewer tracking (live and restream streams only)
-	Views             Views   // Total view count tracking (all stream types)
+	Record            Record    // Recording settings (live and restream streams only)
+	Viewers           Viewers   // Concurrent viewer tracking (live and restream streams only)
+	Views             Views     // Total view count tracking (all stream types)
+	Thumbnail         Thumbnail // Periodic thumbnail generation (live streams only)
 
 	// Specific fields for restream streams
 	SourceURL string // External URL to pull from (RTMP or any FFmpeg-compatible protocol)
@@ -49,6 +50,11 @@ type Viewers struct {
 type Views struct {
 	Enabled bool
 	Window  int // seconds of inactivity before a new visit counts as a new view
+}
+
+type Thumbnail struct {
+	Enabled  bool
+	Interval int // seconds between thumbnail captures
 }
 
 func (s *Stream) GetMasterPlaylistTemplatePath() string {

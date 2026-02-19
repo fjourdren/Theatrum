@@ -116,6 +116,9 @@ stream_templates:
       views:                     # Total view count (all stream types)
         enabled: true
         window: 30               # Seconds of inactivity before a new visit counts as a new view (0 = instant)
+      thumbnail:                 # Periodic PNG thumbnail generation (live streams only)
+        enabled: true
+        interval: 5              # Generate a PNG thumbnail every 5 seconds
 
   # Live stream with recording enabled
   live_recorded:

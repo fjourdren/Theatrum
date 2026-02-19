@@ -114,6 +114,19 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, streamCon
 	}
 	sp.active.Store(true)
 
+	// Start thumbnail generation if enabled
+	if streamConfig.Thumbnail.Enabled {
+		qualityNames := make([]string, 0, len(streamConfig.Qualities))
+		for name := range streamConfig.Qualities {
+			qualityNames = append(qualityNames, name)
+		}
+		sp.thumbnailGen = NewThumbnailGenerator(
+			streamRootDir, outputDir, outputMode, multiQuality,
+			qualityNames, streamConfig.Thumbnail.Interval,
+		)
+		sp.thumbnailGen.Start()
+	}
+
 	// Start monitoring goroutine
 	go sp.monitor(sm)
 

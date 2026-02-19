@@ -70,9 +70,10 @@ type Stream struct {
 	// Specific fields for live streams
 	LiveStreamKey     string `yaml:"live_stream_key"`
 	AuthTokenTemplate string `yaml:"auth_token_template"` // Template for XOR auth, e.g. "{username}" or "{room_id}{username}"
-	Record            Record  `yaml:"record,omitempty"`
-	Viewers           Viewers `yaml:"viewers,omitempty"`
-	Views             Views   `yaml:"views,omitempty"`
+	Record            Record    `yaml:"record,omitempty"`
+	Viewers           Viewers   `yaml:"viewers,omitempty"`
+	Views             Views     `yaml:"views,omitempty"`
+	Thumbnail         Thumbnail `yaml:"thumbnail,omitempty"`
 
 	// Specific fields for restream streams
 	SourceURL string `yaml:"source_url,omitempty"`
@@ -91,6 +92,11 @@ type Viewers struct {
 type Views struct {
 	Enabled bool `yaml:"enabled,omitempty"`
 	Window  int  `yaml:"window,omitempty"`
+}
+
+type Thumbnail struct {
+	Enabled  bool `yaml:"enabled,omitempty"`
+	Interval int  `yaml:"interval,omitempty"`
 }
 
 type StreamTemplate struct {

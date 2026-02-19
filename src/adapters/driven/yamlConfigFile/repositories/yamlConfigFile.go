@@ -150,6 +150,14 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		return fmt.Errorf("%s has invalid views window: must be >= 0 (0 means instant count)", context)
 	}
 
+	// Validate thumbnail config: only valid for live streams
+	if stream.Thumbnail.Enabled && stream.Type != string(models.StreamTypeLive) {
+		return fmt.Errorf("%s has thumbnail enabled but is not a live stream", context)
+	}
+	if stream.Thumbnail.Enabled && stream.Thumbnail.Interval <= 0 {
+		return fmt.Errorf("%s has invalid thumbnail interval: must be > 0", context)
+	}
+
 	// Validate video_unencoded specific fields
 	if stream.Type == string(models.StreamTypeVideoUnEncoded) {
 		if stream.VideoInputPath == "" {
