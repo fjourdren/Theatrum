@@ -1,0 +1,28 @@
+name: E2E Tests
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: src/go.sum
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Generate test video
+        working-directory: src/e2e/testdata
+        run: bash generate_test_video.sh
+
+      - name: Run E2E tests
+        working-directory: src
+        run: go test -tags=e2e -v -timeout 10m ./e2e/...
