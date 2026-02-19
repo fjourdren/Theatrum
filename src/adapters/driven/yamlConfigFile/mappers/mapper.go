@@ -104,6 +104,10 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 			Enabled: stream.Views.Enabled,
 			Window:  stream.Views.Window,
 		},
+		Thumbnail: models.Thumbnail{
+			Enabled:  stream.Thumbnail.Enabled,
+			Interval: stream.Thumbnail.Interval,
+		},
 	}
 }
 

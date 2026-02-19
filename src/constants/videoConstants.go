@@ -10,6 +10,7 @@ var (
 	DashSegName                   = "chunk-stream$RepresentationID$-$Number%05d$.m4s"
 	ViewersFile                   = "viewers.txt"
 	ViewsFile                     = "views.txt"
+	ThumbnailFile                 = "thumbnail.png"
 	ValidVideoExtensions          = []string{".mp4"}
 	ValidMasterPlaylistExtensions = []string{".m3u8"}
 )

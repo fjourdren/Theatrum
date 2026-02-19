@@ -30,7 +30,8 @@ func (s *StreamService) GetStreamStoragePath(stream *models.Stream, templatingVa
 	hlsOnly := stream.Distribution.HlsEnabled() && !stream.Distribution.DashEnabled()
 
 	isRootResource := templatingVars["resource"] == constants.MasterPlaylist ||
-		templatingVars["resource"] == constants.DashManifest
+		templatingVars["resource"] == constants.DashManifest ||
+		templatingVars["resource"] == constants.ThumbnailFile
 
 	if hlsOnly && !isRootResource && !strings.Contains(stream.Path, constants.PlaceholderBegin+"quality"+constants.PlaceholderEnd) {
 		streamStorageTemplate += "/" + templatingVars["quality"]

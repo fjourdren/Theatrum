@@ -68,18 +68,6 @@ func extractSegmentNumber(filename string) int {
 	return n
 }
 
-// GenerateMasterPlaylistWrapper writes a master.m3u8 at rootDir that references default/playlist.m3u8.
-// This is used for passthrough (single-quality) streams so they are discoverable via master.m3u8.
-func GenerateMasterPlaylistWrapper(rootDir string) error {
-	content := "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-STREAM-INF:BANDWIDTH=0\n" +
-		constants.DefaultQuality + "/" + constants.SubPlaylist + "\n"
-	playlistPath := filepath.Join(rootDir, constants.MasterPlaylist)
-	if err := os.WriteFile(playlistPath, []byte(content), 0644); err != nil {
-		return fmt.Errorf("failed to write master playlist wrapper %s: %w", playlistPath, err)
-	}
-	return nil
-}
-
 // buildVODPlaylist constructs the M3U8 content for a VOD playlist.
 func buildVODPlaylist(segments []string, segmentDuration int) string {
 	var b strings.Builder

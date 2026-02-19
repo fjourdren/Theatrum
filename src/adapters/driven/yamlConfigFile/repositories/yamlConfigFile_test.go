@@ -182,6 +182,46 @@ func TestYamlConfigFile_validateStream(t *testing.T) {
 			t.Error("expected error for record on video_encoded")
 		}
 	})
+
+	t.Run("thumbnail on non-live stream", func(t *testing.T) {
+		stream := validStream()
+		stream.Thumbnail = yamlConfigFileEntities.Thumbnail{Enabled: true, Interval: 5}
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for thumbnail on non-live stream")
+		}
+	})
+
+	t.Run("thumbnail with zero interval", func(t *testing.T) {
+		stream := validLiveStream()
+		stream.Thumbnail = yamlConfigFileEntities.Thumbnail{Enabled: true, Interval: 0}
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for thumbnail with zero interval")
+		}
+	})
+
+	t.Run("thumbnail with negative interval", func(t *testing.T) {
+		stream := validLiveStream()
+		stream.Thumbnail = yamlConfigFileEntities.Thumbnail{Enabled: true, Interval: -1}
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for thumbnail with negative interval")
+		}
+	})
+
+	t.Run("valid thumbnail config on live stream", func(t *testing.T) {
+		stream := validLiveStream()
+		stream.Thumbnail = yamlConfigFileEntities.Thumbnail{Enabled: true, Interval: 5}
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error for valid thumbnail config: %v", err)
+		}
+	})
+
+	t.Run("thumbnail disabled no validation on interval", func(t *testing.T) {
+		stream := validLiveStream()
+		stream.Thumbnail = yamlConfigFileEntities.Thumbnail{Enabled: false, Interval: 0}
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error for disabled thumbnail: %v", err)
+		}
+	})
 }
 
 func TestYamlConfigFile_validateQuality(t *testing.T) {

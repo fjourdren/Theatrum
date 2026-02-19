@@ -47,6 +47,7 @@ type StreamProcess struct {
 	viewerTracker      *services.ViewerTracker
 	metrics            *metrics.Metrics
 	startedAt          time.Time
+	thumbnailGen       *ThumbnailGenerator
 }
 
 // DetermineOutputMode returns the appropriate output mode from a Distribution config.
@@ -279,6 +280,11 @@ func (sp *StreamProcess) Stop(cfg config.Config) {
 		return // already stopped
 	}
 
+	// Stop thumbnail generation before shutting down FFmpeg
+	if sp.thumbnailGen != nil {
+		sp.thumbnailGen.Stop()
+	}
+
 	// Close stdin to signal FFmpeg to stop
 	if sp.stdin != nil {
 		sp.stdin.Close()
@@ -390,6 +396,10 @@ func (sp *StreamProcess) saveRecording() {
 			viewsSrc := filepath.Join(sp.streamRootDir, constants.ViewsFile)
 			if _, err := os.Stat(viewsSrc); err == nil {
 				os.Rename(viewsSrc, filepath.Join(recordDir, constants.ViewsFile))
+			}
+			thumbnailSrc := filepath.Join(sp.streamRootDir, constants.ThumbnailFile)
+			if _, err := os.Stat(thumbnailSrc); err == nil {
+				os.Rename(thumbnailSrc, filepath.Join(recordDir, constants.ThumbnailFile))
 			}
 		}
 	} else {

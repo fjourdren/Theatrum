@@ -74,6 +74,8 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/dash+xml")
 	case ".m4s":
 		w.Header().Set("Content-Type", "video/iso.segment")
+	case ".png":
+		w.Header().Set("Content-Type", "image/png")
 	default:
 		if mimeType := http.DetectContentType([]byte(ext)); mimeType != "" {
 			w.Header().Set("Content-Type", mimeType)
@@ -99,6 +101,9 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			// VOD segments don't change
 			w.Header().Set("Cache-Control", "public, max-age=86400")
 		}
+	case ".png":
+		// Thumbnails update periodically, short cache
+		w.Header().Set("Cache-Control", "public, max-age=2")
 	default:
 		w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		w.Header().Set("Pragma", "no-cache")
@@ -163,6 +168,14 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Handle thumbnail.png request
+	if resource == constants.ThumbnailFile {
+		if !h.stream.Thumbnail.Enabled {
+			http.Error(w, "File not found", http.StatusNotFound)
+			return
+		}
+	}
+
 	// Track .ts and .m4s segment requests for viewer/view counting
 	if (ext == ".ts" || ext == ".m4s") && (h.stream.Viewers.Enabled || h.stream.Views.Enabled) {
 		clientIP := services.GetClientIP(r)
@@ -196,6 +209,8 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fileType = "playlist"
 	case ".ts", ".m4s":
 		fileType = "segment"
+	case ".png":
+		fileType = "thumbnail"
 	}
 
 	// Wrap writer to capture status code and bytes written

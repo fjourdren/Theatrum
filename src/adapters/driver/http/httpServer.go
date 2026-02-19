@@ -70,9 +70,10 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
 		// Handle DASH manifest
 		channelRouter.Handle("/{resource:" + constants.DashManifest + "}", handler).Methods("GET")
-		// Handle viewers.txt and views.txt
+		// Handle viewers.txt, views.txt, and thumbnail.png
 		channelRouter.Handle("/{resource:" + constants.ViewersFile + "}", handler).Methods("GET")
 		channelRouter.Handle("/{resource:" + constants.ViewsFile + "}", handler).Methods("GET")
+		channelRouter.Handle("/{resource:" + constants.ThumbnailFile + "}", handler).Methods("GET")
 		// Handle quality-specific paths (e.g., /low/playlist.m3u8, /default/playlist.m3u8)
 		channelRouter.Handle("/{quality}/{resource:.*}", handler).Methods("GET")
 		// Handle simple paths without quality prefix (backward compat)

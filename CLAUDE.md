@@ -51,6 +51,7 @@ src/
 | Process | `adapters/driver/rtmp/management/process.go` | FFmpeg process wrapper |
 | Auth | `adapters/driver/rtmp/auth/` | URL pattern matching, XOR auth |
 | FLV | `adapters/driver/rtmp/flv/` | FLV tag serialization |
+| Thumbnail | `adapters/driver/rtmp/management/thumbnail.go` | Periodic PNG thumbnail extraction |
 
 ### Data Flow
 
@@ -205,6 +206,9 @@ channels:
       views:                # Total view count (all stream types)
         enabled: true
         window: 30          # Minimum seconds of watching before counted (default: 30)
+      thumbnail:            # Periodic PNG thumbnail (live streams only)
+        enabled: true
+        interval: 5         # Generate a thumbnail every 5 seconds
 
   # DASH-only live stream
   "/dash/{username}":
@@ -365,6 +369,38 @@ Theatrum tracks concurrent viewers and total views per stream by monitoring `.ts
 - During non-recording stream cleanup, all files are deleted (including `views.txt`)
 - During recording with `record.path`, `views.txt` is moved alongside other files to the recording directory
 - During in-place recording, `views.txt` stays in `stream.path` with other files
+
+### Thumbnail Generation
+
+Theatrum can periodically generate a PNG thumbnail from a live stream, enabling clients (web players, stream directories) to show a live preview.
+
+**Config fields:**
+```yaml
+thumbnail:
+  enabled: true
+  interval: 5    # seconds between captures
+```
+
+**Restriction:** Live streams only (`type: live`). Config validation rejects `thumbnail.enabled` on other stream types.
+
+**Implementation:** A separate FFmpeg process (`ThumbnailGenerator` in `src/adapters/driver/rtmp/management/thumbnail.go`) runs alongside the main streaming FFmpeg. Every `interval` seconds it:
+1. Finds the latest segment file on disk (`.ts` for HLS, `.m4s` for DASH/Dual)
+2. For multi-quality HLS, selects the highest available quality dir (high > medium > low)
+3. For `.m4s` segments, concatenates the init segment (`init-stream0.m4s`) with the chunk via FFmpeg's `concat:` protocol
+4. Runs `ffmpeg -frames:v 1 -update 1` to extract one frame as PNG
+5. Writes atomically via `.tmp` + rename to `{streamRootDir}/thumbnail.png`
+
+**HTTP endpoint:** `thumbnail.png` is served alongside `master.m3u8`/`manifest.mpd` at the channel path. Returns 404 when `thumbnail.enabled` is `false`. Content-Type: `image/png`, Cache-Control: `public, max-age=2`.
+
+**Lifecycle:**
+- Started by `Manager.createNewStream()` after the stream becomes active
+- Stopped by `StreamProcess.Stop()` before shutting down the main FFmpeg process
+
+**Recording/cleanup behavior:**
+- **No recording**: `os.RemoveAll(streamRootDir)` deletes `thumbnail.png` with all other files
+- **HLS passthrough recording** (with `record.path`): `thumbnail.png` is explicitly moved from `streamRootDir` to `recordDir` alongside `views.txt`
+- **HLS multi-quality / DASH / Dual recording**: `moveContents(streamRootDir, recordDir)` moves `thumbnail.png` with everything else
+- **In-place recording**: `thumbnail.png` stays in `streamRootDir` with other files
 
 ## Stream Types
 
