@@ -70,7 +70,16 @@ Rules:
 - **Keep Getting Started accurate** — build commands, run commands, prerequisites
 - **Update API/endpoint documentation** if routes changed
 
-## Step 6: Verify
+## Step 6: Update Example Configs
+
+Read `config.yml.example` and the example configs in `examples/` (`youtube-like.yml`, `netflix-like.yml`, `twitch-like.yml`, `iptv-like.yml`). If the changes affect configuration structure (new YAML keys, renamed fields, changed defaults, new stream types or distribution modes), update these files to stay consistent:
+
+- **`config.yml.example`** — Must demonstrate all available features. Add new templates/options here first.
+- **`examples/*.yml`** — Each example targets a specific use case. Only add new options if they're relevant to that use case (e.g., don't add DASH to a simple HLS-only example unless it makes sense for the scenario).
+- Ensure YAML anchors/aliases (`&NAME` / `*NAME`) are used consistently with the rest of the file.
+- Verify all examples parse without errors: `python3 -c "import yaml; yaml.safe_load(open('examples/FILE.yml'))"`
+
+## Step 7: Verify
 
 Before finishing, verify:
 1. All file paths mentioned in docs still exist (`ls` or `Glob` to check)

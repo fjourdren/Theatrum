@@ -17,6 +17,7 @@
 #   - Series are served at /series/{series_id}/...
 #   - Longer segment durations (10s) improve compression efficiency for VOD
 #   - Higher bitrates and 4K "ultra" profile for premium viewing experience
+#   - Dual-mode delivery (HLS + DASH) ensures playback on Apple and non-Apple devices
 # ════════════════════════════════════════════════════════════════════════
 
 application:
@@ -78,6 +79,8 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 10   # Longer segments for better VOD compression
+        dash:
+          segment_duration: 10   # Must match HLS in dual mode
       views:
         enabled: true
         window: 30
@@ -94,6 +97,8 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 10
+        dash:
+          segment_duration: 10   # Must match HLS in dual mode
       views:
         enabled: true
         window: 30

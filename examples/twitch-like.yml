@@ -14,7 +14,8 @@
 #   - Streamers connect via RTMP using OBS, FFmpeg, or similar software
 #   - Authentication uses XOR-based token validation
 #   - Transcoded streams (/live/{username}) are re-encoded into multiple
-#     qualities, enabling adaptive bitrate for viewers. Recordings are saved automatically.
+#     qualities, enabling adaptive bitrate for viewers. Served via both
+#     HLS and DASH (dual-mode) for maximum device compatibility. Recordings are saved automatically.
 #   - Passthrough streams (/stream/{username}) copy codecs as-is with
 #     no transcoding. Lowest latency, minimal CPU, but viewers get only
 #     the quality the streamer sends. No recording.
@@ -89,6 +90,9 @@ stream_templates:
         hls:
           segment_duration: 2    # Short segments for low latency
           window_size: 5         # 10s of live content in the playlist
+        dash:
+          segment_duration: 2    # Must match HLS in dual mode
+          window_size: 5
       viewers:
         enabled: true
         window: 30

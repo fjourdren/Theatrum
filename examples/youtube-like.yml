@@ -13,7 +13,7 @@
 # How it works:
 #   - Users upload raw videos to the "raw_videos/{video_id}" directory
 #   - Theatrum auto-detects and encodes them into low/medium/high qualities
-#   - Encoded videos are served via HLS at /upload/{video_id}/...
+#   - Encoded videos are served via HLS and DASH (dual-mode) at /upload/{video_id}/...
 #   - Pre-encoded content can also be served at /watch/{video_id}/...
 #   - View counts track video popularity
 # ════════════════════════════════════════════════════════════════════════
@@ -79,6 +79,8 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6    # Longer segments for VOD (better compression)
+        dash:
+          segment_duration: 6    # Must match HLS in dual mode
       views:
         enabled: true
         window: 30               # Count a view after 30s of watching
@@ -95,6 +97,8 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
+        dash:
+          segment_duration: 6    # Must match HLS in dual mode
       views:
         enabled: true
         window: 30
