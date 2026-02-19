@@ -92,7 +92,7 @@ func (s *ApplicationService) BuildAllStreamsPlaylist() (string, error) {
 			masterFilePublicPath := utils.JoinURL(s.application.PublicPath, channelPath, constants.MasterPlaylist)
 
 			// Add the master playlist to the playlist
-			log.Println("Adding master playlist:", masterFilePublicPath)
+			log.Printf("Adding master playlist: %s", masterFilePublicPath)
 			playlist.WriteString(fmt.Sprintf("%s\n", masterFilePublicPath))
 		}
 	}

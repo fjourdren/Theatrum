@@ -127,7 +127,11 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	builtinVars := h.templateService.GenerateBuiltinVars(connInfo.Stream.Path)
 
 	// Compute stream key = stream.Path resolved with user vars only (builtins left as-is)
-	streamKey, _ := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, connInfo.Vars)
+	streamKey, err := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, connInfo.Vars)
+	if err != nil {
+		log.Printf("Error resolving stream key template: %v", err)
+		return fmt.Errorf("failed to resolve stream key template: %w", err)
+	}
 
 	// Atomic: reuse existing builtins on reconnection, store new ones on first publish
 	builtinVars = h.registry.GetOrRegister(streamKey, builtinVars)
@@ -176,7 +180,11 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 	}
 
 	// Compute tracking key = fully resolved stream path (for viewer/view tracking)
-	trackingKey, _ := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, mergedVars)
+	trackingKey, err := h.templateService.ReplacePlaceholders(connInfo.Stream.Path, mergedVars)
+	if err != nil {
+		log.Printf("Error resolving tracking key template: %v", err)
+		return fmt.Errorf("failed to resolve tracking key template: %w", err)
+	}
 	h.trackingKey = trackingKey
 
 	log.Printf("Stream output path: %s", localPath)

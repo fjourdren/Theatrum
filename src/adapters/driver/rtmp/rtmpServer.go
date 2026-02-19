@@ -48,10 +48,10 @@ func NewRtmpServer(applicationService *services.ApplicationService, streamServic
 }
 
 func (s *RtmpServer) StartRtmpServer() error {
-	log.Printf("=== RTMP SERVER ===")
-
 	port := s.applicationService.GetServer().RTMPPort
 	addr := ":" + strconv.Itoa(port)
+
+	log.Printf("=== RTMP SERVER (port %d) ===", port)
 
 	// Create RTMP server
 	s.server = rtmp.NewServer(&rtmp.ServerConfig{
@@ -81,7 +81,7 @@ func (s *RtmpServer) StartRtmpServer() error {
 }
 
 func (s *RtmpServer) ShutdownRtmpServer() error {
-	log.Printf("Shutting down RTMP server...")
+	log.Printf("Shutting down RTMP server")
 
 	// Close the listener first
 	if s.listener != nil {

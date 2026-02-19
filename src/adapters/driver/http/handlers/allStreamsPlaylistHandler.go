@@ -1,8 +1,10 @@
 package handlers
 
 import (
-	"Theatrum/domain/services"
+	"log"
 	"net/http"
+
+	"Theatrum/domain/services"
 )
 
 type AllStreamsPlaylistHandler struct {
@@ -20,6 +22,7 @@ func NewAllStreamsPlaylistHandler(applicationService *services.ApplicationServic
 func (h *AllStreamsPlaylistHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	content, err := h.applicationService.BuildAllStreamsPlaylist()
 	if err != nil {
+		log.Printf("Error building all streams playlist: %v", err)
 		http.Error(w, "Error building all streams playlist", http.StatusInternalServerError)
 		return
 	}
@@ -30,6 +33,7 @@ func (h *AllStreamsPlaylistHandler) ServeHTTP(w http.ResponseWriter, r *http.Req
 
 	// Write the response
 	if _, err := w.Write([]byte(content)); err != nil {
+		log.Printf("Error writing all streams playlist response: %v", err)
 		http.Error(w, "Error encoding response", http.StatusInternalServerError)
 		return
 	}

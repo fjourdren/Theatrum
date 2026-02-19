@@ -83,7 +83,7 @@ func (e *FfmpegEncoder) EncodeVideo(inputPath string, outputPath string, qualiti
 	args = addMuxing(args, outputPath, distribution, qualities)
 
 	if e.DryRun {
-		log.Printf("Prepared FFmpeg command: \n%s %s\n\n", e.ffmpegPath, strings.Join(args, " "))
+		log.Printf("Prepared FFmpeg command: %s %s", e.ffmpegPath, strings.Join(args, " "))
 
 		// Only print the command, do not execute
 		return nil
@@ -96,7 +96,7 @@ func (e *FfmpegEncoder) EncodeVideo(inputPath string, outputPath string, qualiti
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	log.Printf("Executing FFmpeg command: %s %v", e.ffmpegPath, args)
+	log.Printf("Executing FFmpeg command: %s %s", e.ffmpegPath, strings.Join(args, " "))
 
 	err := cmd.Run()
 	if err != nil {

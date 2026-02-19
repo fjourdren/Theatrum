@@ -52,7 +52,7 @@ func main() {
 	container.Provide(func(configPort repositories.ConfigurationPort, storage repositories.StoragePort, templateService *services.PathTemplateService) (*services.ApplicationService, error) {
 		application, server, channels, err := configPort.Load("config.yml")
 		if err != nil {
-			log.Printf("error loading configuration: %v", err)
+			log.Printf("Error loading configuration: %v", err)
 			return nil, err
 		}
 		return services.NewApplicationService(application, server, channels, storage, templateService), nil
