@@ -21,7 +21,7 @@ func validStream() yamlConfigFileEntities.Stream {
 			"low": {Width: 640, Height: 360, Framerate: 30, Bitrate: "800k", Codec: "libx264", Audio: yamlConfigFileEntities.Audio{Bitrate: "64k", Codec: "aac"}},
 		},
 		Distribution: yamlConfigFileEntities.Distribution{
-			Hls: yamlConfigFileEntities.Hls{SegmentDuration: 6, WindowSize: 3},
+			Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 6, WindowSize: 3},
 		},
 	}
 }
@@ -34,7 +34,7 @@ func validLiveStream() yamlConfigFileEntities.Stream {
 			"low": {Width: 640, Height: 360, Framerate: 30, Bitrate: "800k", Codec: "libx264", Audio: yamlConfigFileEntities.Audio{Bitrate: "64k", Codec: "aac"}},
 		},
 		Distribution: yamlConfigFileEntities.Distribution{
-			Hls: yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
+			Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
 		},
 		LiveStreamKey:     "secret",
 		AuthTokenTemplate: "{username}",
@@ -156,7 +156,7 @@ func TestYamlConfigFile_validateStream(t *testing.T) {
 				"low": {Width: 640, Height: 360, Framerate: 30, Bitrate: "800k", Codec: "libx264", Audio: yamlConfigFileEntities.Audio{Bitrate: "64k", Codec: "aac"}},
 			},
 			Distribution: yamlConfigFileEntities.Distribution{
-				Hls: yamlConfigFileEntities.Hls{SegmentDuration: 6, WindowSize: 3},
+				Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 6, WindowSize: 3},
 			},
 		}
 		if err := v.validateStream(stream, "test"); err == nil {
@@ -214,24 +214,65 @@ func TestYamlConfigFile_validateDistribution(t *testing.T) {
 		wantErr bool
 	}{
 		{
-			"valid",
-			yamlConfigFileEntities.Distribution{Hls: yamlConfigFileEntities.Hls{SegmentDuration: 4, WindowSize: 3}},
+			"valid hls only",
+			yamlConfigFileEntities.Distribution{Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 4, WindowSize: 3}},
 			false,
 		},
 		{
-			"invalid segment_duration",
-			yamlConfigFileEntities.Distribution{Hls: yamlConfigFileEntities.Hls{SegmentDuration: 0, WindowSize: 3}},
+			"invalid hls segment_duration",
+			yamlConfigFileEntities.Distribution{Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 0, WindowSize: 3}},
 			true,
 		},
 		{
-			"negative window_size",
-			yamlConfigFileEntities.Distribution{Hls: yamlConfigFileEntities.Hls{SegmentDuration: 4, WindowSize: -1}},
+			"negative hls window_size",
+			yamlConfigFileEntities.Distribution{Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 4, WindowSize: -1}},
 			true,
 		},
 		{
-			"zero window_size is valid",
-			yamlConfigFileEntities.Distribution{Hls: yamlConfigFileEntities.Hls{SegmentDuration: 4, WindowSize: 0}},
+			"zero hls window_size is valid",
+			yamlConfigFileEntities.Distribution{Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 4, WindowSize: 0}},
 			false,
+		},
+		{
+			"no distribution format",
+			yamlConfigFileEntities.Distribution{},
+			true,
+		},
+		{
+			"valid dash only",
+			yamlConfigFileEntities.Distribution{Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 4, WindowSize: 3}},
+			false,
+		},
+		{
+			"invalid dash segment_duration",
+			yamlConfigFileEntities.Distribution{Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 0, WindowSize: 3}},
+			true,
+		},
+		{
+			"negative dash window_size",
+			yamlConfigFileEntities.Distribution{Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 4, WindowSize: -1}},
+			true,
+		},
+		{
+			"zero dash window_size is valid",
+			yamlConfigFileEntities.Distribution{Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 4, WindowSize: 0}},
+			false,
+		},
+		{
+			"valid dual mode matching segment_duration",
+			yamlConfigFileEntities.Distribution{
+				Hls:  &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
+				Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 2, WindowSize: 5},
+			},
+			false,
+		},
+		{
+			"dual mode mismatched segment_duration",
+			yamlConfigFileEntities.Distribution{
+				Hls:  &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
+				Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 4, WindowSize: 3},
+			},
+			true,
 		},
 	}
 
@@ -403,6 +444,136 @@ channels:
 		_, _, _, err := loader.Load(configPath)
 		if err == nil {
 			t.Error("expected error for invalid YAML")
+		}
+	})
+
+	t.Run("dash only config loads correctly", func(t *testing.T) {
+		configContent := `
+application:
+  public_path: "http://localhost:8080"
+server:
+  http: 8080
+  rtmp: 1935
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "secret"
+      auth_token_template: "{username}"
+      distribution:
+        dash:
+          segment_duration: 4
+          window_size: 5
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		loader := NewYamlConfigFile()
+		_, _, channels, err := loader.Load(configPath)
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+
+		ch := (*channels)["/user/{username}"]
+		if ch.Distribution.Hls != nil {
+			t.Error("expected Hls to be nil for dash-only config")
+		}
+		if ch.Distribution.Dash == nil {
+			t.Fatal("expected Dash to be non-nil")
+		}
+		if ch.Distribution.Dash.SegmentDuration != 4 {
+			t.Errorf("expected DASH SegmentDuration 4, got %d", ch.Distribution.Dash.SegmentDuration)
+		}
+		if ch.Distribution.Dash.WindowSize != 5 {
+			t.Errorf("expected DASH WindowSize 5, got %d", ch.Distribution.Dash.WindowSize)
+		}
+	})
+
+	t.Run("dual mode config loads correctly", func(t *testing.T) {
+		configContent := `
+application:
+  public_path: "http://localhost:8080"
+server:
+  http: 8080
+  rtmp: 1935
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "secret"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3
+        dash:
+          segment_duration: 2
+          window_size: 5
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		loader := NewYamlConfigFile()
+		_, _, channels, err := loader.Load(configPath)
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+
+		ch := (*channels)["/user/{username}"]
+		if ch.Distribution.Hls == nil {
+			t.Fatal("expected Hls to be non-nil in dual mode")
+		}
+		if ch.Distribution.Dash == nil {
+			t.Fatal("expected Dash to be non-nil in dual mode")
+		}
+		if ch.Distribution.Hls.SegmentDuration != 2 {
+			t.Errorf("expected HLS SegmentDuration 2, got %d", ch.Distribution.Hls.SegmentDuration)
+		}
+		if ch.Distribution.Dash.SegmentDuration != 2 {
+			t.Errorf("expected DASH SegmentDuration 2, got %d", ch.Distribution.Dash.SegmentDuration)
+		}
+	})
+
+	t.Run("dual mode mismatched segment duration rejected", func(t *testing.T) {
+		configContent := `
+application:
+  public_path: "http://localhost:8080"
+server:
+  http: 8080
+  rtmp: 1935
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "secret"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3
+        dash:
+          segment_duration: 4
+          window_size: 3
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		loader := NewYamlConfigFile()
+		_, _, _, err := loader.Load(configPath)
+		if err == nil {
+			t.Error("expected error for mismatched segment durations in dual mode")
 		}
 	})
 }

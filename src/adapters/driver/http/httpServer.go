@@ -66,8 +66,10 @@ func (s *HttpServer) BuildRouter() *mux.Router {
 		// Create the stream handler
     handler := handlers.NewStreamHandler(&channel, s.streamService, s.applicationService, s.templateService, s.registry, s.viewerTracker, s.metrics)
 		
-		// Handle master playlist
+		// Handle master playlist (HLS)
 		channelRouter.Handle("/{resource:" + constants.MasterPlaylist + "}", handler).Methods("GET")
+		// Handle DASH manifest
+		channelRouter.Handle("/{resource:" + constants.DashManifest + "}", handler).Methods("GET")
 		// Handle viewers.txt and views.txt
 		channelRouter.Handle("/{resource:" + constants.ViewersFile + "}", handler).Methods("GET")
 		channelRouter.Handle("/{resource:" + constants.ViewsFile + "}", handler).Methods("GET")

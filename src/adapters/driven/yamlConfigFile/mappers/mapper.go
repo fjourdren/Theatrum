@@ -49,9 +49,28 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		qualities[key] = ToDomainQuality(quality)
 	}
 
-	windowSize := stream.Distribution.Hls.WindowSize
-	if windowSize <= 0 {
-		windowSize = 3
+	var hlsModel *models.Hls
+	if stream.Distribution.Hls != nil {
+		windowSize := stream.Distribution.Hls.WindowSize
+		if windowSize <= 0 {
+			windowSize = 3
+		}
+		hlsModel = &models.Hls{
+			SegmentDuration: stream.Distribution.Hls.SegmentDuration,
+			WindowSize:      windowSize,
+		}
+	}
+
+	var dashModel *models.Dash
+	if stream.Distribution.Dash != nil {
+		windowSize := stream.Distribution.Dash.WindowSize
+		if windowSize <= 0 {
+			windowSize = 3
+		}
+		dashModel = &models.Dash{
+			SegmentDuration: stream.Distribution.Dash.SegmentDuration,
+			WindowSize:      windowSize,
+		}
 	}
 
 	return models.Stream{
@@ -59,10 +78,8 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		Path:      stream.Path,
 		Qualities: qualities,
 		Distribution: models.Distribution{
-			Hls: models.Hls{
-				SegmentDuration: stream.Distribution.Hls.SegmentDuration,
-				WindowSize:      windowSize,
-			},
+			Hls:  hlsModel,
+			Dash: dashModel,
 		},
 
 		// Specific fields for video unencoded streams

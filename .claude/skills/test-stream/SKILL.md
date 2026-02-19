@@ -1,6 +1,6 @@
 ---
 name: test-stream
-description: Boot the app, stream via RTMP, watch via HLS, and validate the full pipeline
+description: Boot the app, stream via RTMP, watch via HLS/DASH, and validate the full pipeline
 disable-model-invocation: true
 ---
 
@@ -126,18 +126,17 @@ Wait a few seconds for segments to be generated:
 sleep 8
 ```
 
-## Step 7: Validate HLS Output
+## Step 7: Validate Output
 
-Check that HLS playlists and segments are being served:
+Check that playlists/manifests and segments are being served:
 
+### HLS (passthrough)
 ```bash
-# For passthrough, check the default playlist
-echo "=== Playlist ==="
+echo "=== HLS Playlist ==="
 curl -s http://localhost:8080/test/alice/default/playlist.m3u8
 
 echo ""
 echo "=== Segment check ==="
-# Get the first segment URL from the playlist and verify it's downloadable
 SEGMENT=$(curl -s http://localhost:8080/test/alice/default/playlist.m3u8 | grep '.ts' | head -1)
 if [ -n "$SEGMENT" ]; then
     HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/test/alice/default/$SEGMENT")
@@ -147,10 +146,30 @@ else
 fi
 ```
 
-For multi-quality streams, also check:
+### HLS (multi-quality)
 ```bash
 curl -s http://localhost:8080/test/alice/master.m3u8
 curl -s http://localhost:8080/test/alice/low/playlist.m3u8
+```
+
+### DASH
+If the channel uses DASH distribution, check the MPD manifest:
+```bash
+echo "=== DASH Manifest ==="
+curl -s http://localhost:8080/test/alice/manifest.mpd
+
+echo ""
+echo "=== DASH Segment check ==="
+# Check an init segment
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/test/alice/init-stream0.m4s")
+echo "Init segment HTTP status: $HTTP_CODE"
+```
+
+### Dual mode (HLS + DASH)
+Both endpoints should work:
+```bash
+curl -s -o /dev/null -w "HLS: %{http_code}\n" http://localhost:8080/test/alice/master.m3u8
+curl -s -o /dev/null -w "DASH: %{http_code}\n" http://localhost:8080/test/alice/manifest.mpd
 ```
 
 ## Step 8: Check Metrics

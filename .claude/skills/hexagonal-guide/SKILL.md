@@ -151,9 +151,9 @@ The domain is the core — it contains all business logic and has zero knowledge
 - HTTP and RTMP servers use metrics for request instrumentation
 - Acceptable because metrics is shared infrastructure, not business logic
 
-**`rtmp/management/process.go` imports `ffmpegEncoder/ffmpegargs`:**
-- Live stream FFmpeg process reuses shared argument-building utilities from the encoder adapter
-- Could be extracted to a shared package or domain service if strict separation is needed
+**`rtmp/management/process.go` and `ffmpegEncoder` both import `shared/ffmpegargs`:**
+- FFmpeg argument builders (filter, codecs, stream map) live in `src/shared/ffmpegargs/` — a shared package used by both the VOD encoder and the live stream process
+- This avoids cross-adapter dependency while keeping reusable FFmpeg logic in one place
 
 ## How to Answer
 

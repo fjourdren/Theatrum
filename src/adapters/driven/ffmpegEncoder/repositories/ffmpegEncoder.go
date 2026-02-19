@@ -32,17 +32,38 @@ func addInput(args []string, inputPath string) []string {
 func addMuxing(args []string, outputPath string, distribution models.Distribution, qualities map[string]models.Quality) []string {
 	outputDir := filepath.Dir(outputPath)
 
-	streamMap := ffmpegargs.BuildVarStreamMap(qualities)
+	if distribution.DashEnabled() {
+		// DASH or Dual mode
+		segDur := distribution.Dash.SegmentDuration
 
-	// Add HLS parameters
-	args = append(args,
-		"-f", "hls",
-		"-hls_time", fmt.Sprintf("%d", distribution.Hls.SegmentDuration),
-		"-var_stream_map", streamMap,
-		"-hls_segment_filename", path.Join(outputDir, "%v", constants.SegmentName),
-		"-master_pl_name", constants.MasterPlaylist,
-		path.Join(outputDir, "%v", constants.SubPlaylist),
-	)
+		args = append(args,
+			"-f", "dash",
+			"-seg_duration", fmt.Sprintf("%d", segDur),
+			"-use_template", "1",
+			"-use_timeline", "1",
+			"-init_seg_name", constants.DashInitSegName,
+			"-media_seg_name", constants.DashSegName,
+			"-adaptation_sets", "id=0,streams=v id=1,streams=a",
+		)
+
+		if distribution.IsDualMode() {
+			args = append(args, "-hls_playlist", "1")
+		}
+
+		args = append(args, path.Join(outputDir, constants.DashManifest))
+	} else {
+		// HLS-only mode (unchanged)
+		streamMap := ffmpegargs.BuildVarStreamMap(qualities)
+
+		args = append(args,
+			"-f", "hls",
+			"-hls_time", fmt.Sprintf("%d", distribution.Hls.SegmentDuration),
+			"-var_stream_map", streamMap,
+			"-hls_segment_filename", path.Join(outputDir, "%v", constants.SegmentName),
+			"-master_pl_name", constants.MasterPlaylist,
+			path.Join(outputDir, "%v", constants.SubPlaylist),
+		)
+	}
 
 	return args
 }

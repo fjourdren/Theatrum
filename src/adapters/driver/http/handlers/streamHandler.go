@@ -63,24 +63,35 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set appropriate headers based on file type
+	// Set appropriate content type based on file extension
 	ext := filepath.Ext(resource)
-	if mimeType := http.DetectContentType([]byte(ext)); mimeType != "" {
-		w.Header().Set("Content-Type", mimeType)
+	switch ext {
+	case ".m3u8":
+		w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+	case ".ts":
+		w.Header().Set("Content-Type", "video/mp2t")
+	case ".mpd":
+		w.Header().Set("Content-Type", "application/dash+xml")
+	case ".m4s":
+		w.Header().Set("Content-Type", "video/iso.segment")
+	default:
+		if mimeType := http.DetectContentType([]byte(ext)); mimeType != "" {
+			w.Header().Set("Content-Type", mimeType)
+		}
 	}
 
 	// Set cache control headers based on stream type and file type
 	isLive := h.stream.Type == models.StreamTypeLive
 	switch ext {
-	case ".m3u8":
+	case ".m3u8", ".mpd":
 		if isLive {
-			// Live playlists update every segment, must not be cached
+			// Live playlists/manifests update every segment, must not be cached
 			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 		} else {
-			// VOD playlists are stable
+			// VOD playlists/manifests are stable
 			w.Header().Set("Cache-Control", "public, max-age=600")
 		}
-	case ".ts":
+	case ".ts", ".m4s":
 		if isLive {
 			// Live segments are short-lived
 			w.Header().Set("Cache-Control", "public, max-age=10")
@@ -142,8 +153,8 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Track .ts segment requests for viewer/view counting
-	if ext == ".ts" && (h.stream.Viewers.Enabled || h.stream.Views.Enabled) {
+	// Track .ts and .m4s segment requests for viewer/view counting
+	if (ext == ".ts" || ext == ".m4s") && (h.stream.Viewers.Enabled || h.stream.Views.Enabled) {
 		clientIP := services.GetClientIP(r)
 		h.viewerTracker.TrackSegmentRequest(trackingKey, clientIP, h.stream.Viewers, h.stream.Views)
 	}
@@ -170,9 +181,9 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	fileType := "other"
 	switch ext {
-	case ".m3u8":
+	case ".m3u8", ".mpd":
 		fileType = "playlist"
-	case ".ts":
+	case ".ts", ".m4s":
 		fileType = "segment"
 	}
 

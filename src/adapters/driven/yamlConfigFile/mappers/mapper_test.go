@@ -115,7 +115,7 @@ func TestToDomainStream(t *testing.T) {
 				"low": {Width: 640, Height: 360, Framerate: 30, Bitrate: "800k", Codec: "libx264", Audio: entities.Audio{Bitrate: "64k", Codec: "aac"}},
 			},
 			Distribution: entities.Distribution{
-				Hls: entities.Hls{SegmentDuration: 4, WindowSize: 5},
+				Hls: &entities.Hls{SegmentDuration: 4, WindowSize: 5},
 			},
 			LiveStreamKey:     "secret",
 			AuthTokenTemplate: "{username}",
@@ -159,13 +159,83 @@ func TestToDomainStream(t *testing.T) {
 			Type: "video_encoded",
 			Path: "videos/{name}",
 			Distribution: entities.Distribution{
-				Hls: entities.Hls{SegmentDuration: 6, WindowSize: 0},
+				Hls: &entities.Hls{SegmentDuration: 6, WindowSize: 0},
 			},
 		}
 
 		result := ToDomainStream(stream)
 		if result.Distribution.Hls.WindowSize != 3 {
 			t.Errorf("expected default WindowSize 3, got %d", result.Distribution.Hls.WindowSize)
+		}
+	})
+
+	t.Run("dash only distribution mapped", func(t *testing.T) {
+		stream := entities.Stream{
+			Type: "live",
+			Path: "live/{username}",
+			Distribution: entities.Distribution{
+				Dash: &entities.Dash{SegmentDuration: 4, WindowSize: 5},
+			},
+			LiveStreamKey:     "secret",
+			AuthTokenTemplate: "{username}",
+		}
+
+		result := ToDomainStream(stream)
+		if result.Distribution.Hls != nil {
+			t.Error("expected Hls to be nil for dash-only stream")
+		}
+		if result.Distribution.Dash == nil {
+			t.Fatal("expected Dash to be non-nil")
+		}
+		if result.Distribution.Dash.SegmentDuration != 4 {
+			t.Errorf("expected Dash SegmentDuration 4, got %d", result.Distribution.Dash.SegmentDuration)
+		}
+		if result.Distribution.Dash.WindowSize != 5 {
+			t.Errorf("expected Dash WindowSize 5, got %d", result.Distribution.Dash.WindowSize)
+		}
+	})
+
+	t.Run("dash window_size default when zero", func(t *testing.T) {
+		stream := entities.Stream{
+			Type: "live",
+			Path: "live/{username}",
+			Distribution: entities.Distribution{
+				Dash: &entities.Dash{SegmentDuration: 4, WindowSize: 0},
+			},
+			LiveStreamKey:     "secret",
+			AuthTokenTemplate: "{username}",
+		}
+
+		result := ToDomainStream(stream)
+		if result.Distribution.Dash.WindowSize != 3 {
+			t.Errorf("expected default Dash WindowSize 3, got %d", result.Distribution.Dash.WindowSize)
+		}
+	})
+
+	t.Run("dual mode distribution mapped", func(t *testing.T) {
+		stream := entities.Stream{
+			Type: "live",
+			Path: "live/{username}",
+			Distribution: entities.Distribution{
+				Hls:  &entities.Hls{SegmentDuration: 2, WindowSize: 3},
+				Dash: &entities.Dash{SegmentDuration: 2, WindowSize: 3},
+			},
+			LiveStreamKey:     "secret",
+			AuthTokenTemplate: "{username}",
+		}
+
+		result := ToDomainStream(stream)
+		if result.Distribution.Hls == nil {
+			t.Fatal("expected Hls to be non-nil in dual mode")
+		}
+		if result.Distribution.Dash == nil {
+			t.Fatal("expected Dash to be non-nil in dual mode")
+		}
+		if result.Distribution.Hls.SegmentDuration != 2 {
+			t.Errorf("expected HLS SegmentDuration 2, got %d", result.Distribution.Hls.SegmentDuration)
+		}
+		if result.Distribution.Dash.SegmentDuration != 2 {
+			t.Errorf("expected DASH SegmentDuration 2, got %d", result.Distribution.Dash.SegmentDuration)
 		}
 	})
 }
@@ -177,7 +247,7 @@ func TestToDomainChannels(t *testing.T) {
 				Type: "live",
 				Path: "live/{username}",
 				Distribution: entities.Distribution{
-					Hls: entities.Hls{SegmentDuration: 2, WindowSize: 3},
+					Hls: &entities.Hls{SegmentDuration: 2, WindowSize: 3},
 				},
 			},
 		},
@@ -186,7 +256,7 @@ func TestToDomainChannels(t *testing.T) {
 				Type: "video_encoded",
 				Path: "videos/{name}",
 				Distribution: entities.Distribution{
-					Hls: entities.Hls{SegmentDuration: 6},
+					Hls: &entities.Hls{SegmentDuration: 6},
 				},
 			},
 		},

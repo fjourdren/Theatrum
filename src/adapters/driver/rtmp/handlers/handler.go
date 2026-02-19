@@ -151,10 +151,13 @@ func (h *Handler) OnPublish(ctx *rtmp.StreamContext, timestamp uint32, cmd *mess
 		return fmt.Errorf("failed to build stream path: %w", err)
 	}
 
-	// With qualities: FFmpeg creates quality subdirs via %v in the output pattern
-	// Without qualities: output goes into the default quality subdirectory
+	// Determine output directory based on distribution mode:
+	// - DASH-enabled (any mode): flat layout at {path}/ (no quality subdirs)
+	// - HLS-only with qualities: FFmpeg creates quality subdirs via %v
+	// - HLS-only passthrough: output goes into default/ subdirectory
 	var localPath string
-	if len(connInfo.Stream.Qualities) > 0 {
+	dashEnabled := connInfo.Stream.Distribution.DashEnabled()
+	if dashEnabled || len(connInfo.Stream.Qualities) > 0 {
 		localPath = filepath.Join(constants.VideoDir, streamPath)
 	} else {
 		localPath = filepath.Join(constants.VideoDir, streamPath, constants.DefaultQuality)

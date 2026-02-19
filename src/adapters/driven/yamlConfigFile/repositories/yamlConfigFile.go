@@ -239,13 +239,37 @@ func (y *YamlConfigFile) validateQuality(quality yamlConfigFileEntities.Quality,
 }
 
 func (y *YamlConfigFile) validateDistribution(distribution yamlConfigFileEntities.Distribution, streamType string, context string) error {
-	// Validate HLS settings
-	if distribution.Hls.SegmentDuration <= 0 {
-		return fmt.Errorf("%s has invalid HLS segment_duration: must be greater than 0", context)
+	// At least one distribution format must be configured
+	if distribution.Hls == nil && distribution.Dash == nil {
+		return fmt.Errorf("%s must have at least one distribution format (hls or dash)", context)
 	}
 
-	if distribution.Hls.WindowSize < 0 {
-		return fmt.Errorf("%s has invalid HLS window_size: must be 0 or greater (0 uses default of 3)", context)
+	// Validate HLS settings if present
+	if distribution.Hls != nil {
+		if distribution.Hls.SegmentDuration <= 0 {
+			return fmt.Errorf("%s has invalid HLS segment_duration: must be greater than 0", context)
+		}
+		if distribution.Hls.WindowSize < 0 {
+			return fmt.Errorf("%s has invalid HLS window_size: must be 0 or greater (0 uses default of 3)", context)
+		}
+	}
+
+	// Validate DASH settings if present
+	if distribution.Dash != nil {
+		if distribution.Dash.SegmentDuration <= 0 {
+			return fmt.Errorf("%s has invalid DASH segment_duration: must be greater than 0", context)
+		}
+		if distribution.Dash.WindowSize < 0 {
+			return fmt.Errorf("%s has invalid DASH window_size: must be 0 or greater (0 uses default of 3)", context)
+		}
+	}
+
+	// In dual mode, segment durations must match
+	if distribution.Hls != nil && distribution.Dash != nil {
+		if distribution.Hls.SegmentDuration != distribution.Dash.SegmentDuration {
+			return fmt.Errorf("%s has mismatched segment_duration between HLS (%d) and DASH (%d): must be equal in dual mode",
+				context, distribution.Hls.SegmentDuration, distribution.Dash.SegmentDuration)
+		}
 	}
 
 	return nil

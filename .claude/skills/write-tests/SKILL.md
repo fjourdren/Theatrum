@@ -142,6 +142,13 @@ type EncoderPort interface {
 }
 ```
 
+**Note:** `models.Distribution` uses pointer fields (`*Hls`, `*Dash`). In tests, construct as:
+```go
+dist := models.Distribution{Hls: &models.Hls{SegmentDuration: 6}}
+dist := models.Distribution{Dash: &models.Dash{SegmentDuration: 6}}
+dist := models.Distribution{Hls: &models.Hls{SegmentDuration: 2}, Dash: &models.Dash{SegmentDuration: 2}} // dual
+```
+
 **ConfigurationPort** (`src/domain/repositories/configurationPort.go`):
 ```go
 type ConfigurationPort interface {

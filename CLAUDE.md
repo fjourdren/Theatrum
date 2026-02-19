@@ -6,6 +6,7 @@ Theatrum is a streaming server built in Go supporting:
 - Video on Demand (VOD) with adaptive bitrate streaming
 - Multiple quality profiles (low, medium, high)
 - HLS (HTTP Live Streaming) protocol
+- MPEG-DASH protocol (standalone or dual-mode with HLS)
 - Live RTMP streaming
 
 ## Architecture
@@ -16,6 +17,8 @@ Theatrum is a streaming server built in Go supporting:
 src/
 ├── cmd/main.go              # Entry point with DI container (uber/dig)
 ├── constants/               # App constants, paths, video settings
+├── shared/
+│   └── ffmpegargs/          # Shared FFmpeg argument builders (filter, codecs, stream map)
 ├── domain/
 │   ├── models/              # Stream, Quality, Application, Server, Distribution
 │   ├── services/            # ApplicationService, StreamService, EncodeService, PathTemplateService, ViewerTracker
@@ -24,13 +27,12 @@ src/
 └── adapters/
     ├── driven/              # Output adapters
     │   ├── ffmpegEncoder/   # FFmpeg encoding implementation
-    │   │   ├── ffmpegargs/  # Shared FFmpeg argument builders (filter, codecs, stream map)
     │   │   └── repositories/# EncoderPort implementation (VOD encoding)
     │   ├── fileAccess/      # File system operations
     │   ├── metrics/         # Prometheus metrics collector
     │   └── yamlConfigFile/  # YAML configuration loader
     └── driver/              # Input adapters
-        ├── http/            # HTTP/HLS server
+        ├── http/            # HTTP/HLS/DASH server
         ├── rtmp/            # RTMP streaming server
         └── ports/           # Port interfaces for drivers
 ```
@@ -63,11 +65,11 @@ StreamManager.GetOrCreateStream() - Creates/reuses FFmpeg process
     ↓
 FLV Writer - Serializes RTMP frames to FLV format
     ↓
-FFmpeg (stdin pipe) - Converts FLV to HLS (passthrough or multi-quality)
+FFmpeg (stdin pipe) - Converts FLV to HLS, DASH, or both (passthrough or multi-quality)
     ↓
-HLS output (single playlist or master + per-quality playlists)
+Output: HLS (.m3u8 + .ts), DASH (.mpd + .m4s), or Dual (both via CMAF .m4s)
     ↓
-HTTP Server (port 8080) - Serves HLS to viewers
+HTTP Server (port 8080) - Serves HLS/DASH to viewers
     ↓
 On stream end: cleanup (delete files) or recording (generate VOD playlist + move to record path)
 ```
@@ -170,11 +172,60 @@ channels:
       views:                # Total view count (all stream types)
         enabled: true
         window: 30          # Minimum seconds of watching before counted (default: 30)
+
+  # DASH-only live stream
+  "/dash/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        dash:
+          segment_duration: 2
+          window_size: 5
+
+  # Dual-mode live stream (HLS + DASH from a single FFmpeg process)
+  "/dual/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secret-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: ...
+        medium: ...
+        high: ...
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+        dash:
+          segment_duration: 2  # Must match HLS segment_duration in dual mode
+          window_size: 5
 ```
 
-**Live stream modes:**
+### Distribution Modes
+
+The `distribution` block supports three modes based on which formats are configured:
+
+| Mode | Config | Muxer | Segments | Output files |
+|------|--------|-------|----------|--------------|
+| **HLS-only** | `hls` only | `-f hls` | `.ts` | `master.m3u8` + per-quality `playlist.m3u8` |
+| **DASH-only** | `dash` only | `-f dash` | `.m4s` | `manifest.mpd` + init/chunk `.m4s` |
+| **Dual** | both `hls` + `dash` | `-f dash -hls_playlist 1` | `.m4s` (fMP4/CMAF) | `manifest.mpd` + `master.m3u8` + `.m4s` |
+
+**HLS-only modes:**
 - **Without `qualities`** (passthrough): codec copy, single playlist at `{path}/default/playlist.m3u8`
 - **With `qualities`** (transcoding): multi-quality HLS with `master.m3u8` + per-quality subdirs (`low/`, `medium/`, `high/`), uses `-preset veryfast -tune zerolatency` for real-time encoding
+
+**DASH / Dual modes:**
+- Flat directory layout (no quality subdirs) — FFmpeg manages representations internally
+- In dual mode, `segment_duration` must match between `hls` and `dash` (enforced by config validation)
+- Dual mode shares fMP4/CMAF `.m4s` segments between both manifests
+- Recording: FFmpeg finalizes manifests on clean exit; no additional VOD playlist generation needed
+
+**Implementation:** `OutputMode` enum in `src/adapters/driver/rtmp/management/process.go` (`OutputModeHLS`, `OutputModeDASH`, `OutputModeDual`) determines which FFmpeg command is built. `DetermineOutputMode()` derives the mode from the `Distribution` config.
 
 ### Recording
 
@@ -195,6 +246,8 @@ When recording is disabled (default):
 - **On stream end**: All remaining files are deleted after `cleanup_delay`
 
 `record.path` is optional. When provided, it supports the same `{var}` and `{%FUNC%}` placeholders as `stream.path`. Built-in functions resolve to the same values as the stream's path within the same session. When omitted, files remain in `stream.path` after the stream ends (in-place recording).
+
+**Recording with DASH/Dual modes:** FFmpeg finalizes the MPD manifest (and HLS playlists in dual mode) on clean exit. No additional VOD playlist generation is performed — files are simply moved (or kept in-place) as-is.
 
 ### Path Template System
 
@@ -224,19 +277,19 @@ path: "recordings/{%UUID%}"                          # → recordings/550e8400-e
 
 ### Viewer & View Tracking
 
-Theatrum tracks concurrent viewers and total views per stream by monitoring `.ts` segment requests from unique client IPs. Both viewers and views use a **delayed window** — they only count after a client has been watching continuously for `window` seconds.
+Theatrum tracks concurrent viewers and total views per stream by monitoring `.ts` and `.m4s` segment requests from unique client IPs. Both viewers and views use a **delayed window** — they only count after a client has been watching continuously for `window` seconds.
 
 **Components:**
 - `ViewerTracker` service (`src/domain/services/viewerTracker.go`) — tracks per-stream viewer/view data with delayed counting, persists view counts to disk
-- `StreamHandler` (`src/adapters/driver/http/handlers/streamHandler.go`) — calls tracker on `.ts` requests, serves `viewers.txt`/`views.txt`
+- `StreamHandler` (`src/adapters/driver/http/handlers/streamHandler.go`) — calls tracker on `.ts`/`.m4s` requests, serves `viewers.txt`/`views.txt`
 - Cleanup on stream end via `StreamProcess.Stop()` calling `ViewerTracker.UnregisterStream()`
 
-**Endpoints** (served alongside `master.m3u8`):
+**Endpoints** (served alongside `master.m3u8` or `manifest.mpd`):
 - `viewers.txt` — concurrent viewer count (live streams only), returns 404 if disabled
 - `views.txt` — total view count (all stream types), returns 404 if disabled
 
 **Delayed window behavior:**
-- Each client IP starts a new session on first `.ts` request (or after inactivity >= `window`)
+- Each client IP starts a new session on first `.ts`/`.m4s` request (or after inactivity >= `window`)
 - **Viewers**: a client only appears in the viewer count after watching continuously for `window` seconds. If they stop requesting segments for `window` seconds, their session resets
 - **Views**: a view is only counted once a client has watched continuously for `window` seconds. Each session can increment the view count at most once
 - `window: 0` counts immediately on first request (same as instant behavior)

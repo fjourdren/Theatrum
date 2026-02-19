@@ -52,6 +52,7 @@ Rules:
 - Data Flow diagram (new steps?)
 - Authentication section (new auth methods?)
 - Configuration section (new YAML keys?)
+- Distribution Modes section (new output modes? HLS/DASH/Dual changes?)
 - Recording section (behavior changes?)
 - Path Template System (new functions?)
 - Viewer & View Tracking (new features?)

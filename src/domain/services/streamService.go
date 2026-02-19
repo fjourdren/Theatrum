@@ -23,9 +23,16 @@ func (s *StreamService) GetStreamStoragePath(stream *models.Stream, templatingVa
 		templatingVars["quality"] = constants.DefaultQuality
 	}
 
-	// If the path does not contain the quality placeholder, add it (except for master.m3u8)
 	streamStorageTemplate := stream.Path
-	if !strings.Contains(stream.Path, constants.PlaceholderBegin+"quality"+constants.PlaceholderEnd) && templatingVars["resource"] != constants.MasterPlaylist {
+
+	// Only HLS-only mode uses quality subdirs.
+	// DASH-enabled modes (DASH-only or dual) use a flat layout — no quality subdir appended.
+	hlsOnly := stream.Distribution.HlsEnabled() && !stream.Distribution.DashEnabled()
+
+	isRootResource := templatingVars["resource"] == constants.MasterPlaylist ||
+		templatingVars["resource"] == constants.DashManifest
+
+	if hlsOnly && !isRootResource && !strings.Contains(stream.Path, constants.PlaceholderBegin+"quality"+constants.PlaceholderEnd) {
 		streamStorageTemplate += "/" + templatingVars["quality"]
 	}
 

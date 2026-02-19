@@ -132,6 +132,53 @@ stream_templates:
         enabled: true
         path: "recordings/{username}/{%STARTING_DATE%}"  # Same placeholders as stream path
 
+  # DASH-only live stream (MPEG-DASH without HLS)
+  live_dash:
+    stream: &live_dash_config
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        dash:
+          segment_duration: 2
+          window_size: 5
+
+  # Dual-mode live stream (both HLS and DASH from a single FFmpeg process)
+  # Both formats share fMP4/CMAF segments (.m4s). HLS uses fMP4 instead of .ts.
+  live_dual:
+    stream: &live_dual_config
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+        dash:
+          segment_duration: 2  # Must match HLS segment_duration in dual mode
+          window_size: 5
+
+  # VOD encoding with DASH output
+  video_dash:
+    stream: &video_dash_config
+      type: video_unencoded
+      video_input_path: "raw_videos/{username}"
+      path: "records/{username}"
+      delete_after_encoding: false
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        dash:
+          segment_duration: 6
+
 # ────────────────
 # All streams endpoints
 channels:

@@ -39,7 +39,7 @@ func TestEncodeService_EncodeStream(t *testing.T) {
 				"high": {Width: 1920, Height: 1080},
 			},
 			Distribution: models.Distribution{
-				Hls: models.Hls{SegmentDuration: 6},
+				Hls: &models.Hls{SegmentDuration: 6},
 			},
 		}
 
@@ -100,7 +100,7 @@ func TestEncodeService_EncodeQuality(t *testing.T) {
 		svc := NewEncodeService(enc)
 
 		quality := models.Quality{Width: 1280, Height: 720}
-		dist := models.Distribution{Hls: models.Hls{SegmentDuration: 4}}
+		dist := models.Distribution{Hls: &models.Hls{SegmentDuration: 4}}
 
 		err := svc.EncodeQuality("input.mp4", "output/", "medium", quality, dist)
 		if err != nil {

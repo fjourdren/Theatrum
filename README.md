@@ -3,7 +3,7 @@
 ![](imgs/logo.png)
 
 
-A powerful and flexible streaming server that supports video on demand (VOD) and live RTMP streaming with adaptive bitrate capabilities. Built to handle multiple quality profiles and HLS protocol.
+A powerful and flexible streaming server that supports video on demand (VOD) and live RTMP streaming with adaptive bitrate capabilities. Built to handle multiple quality profiles with HLS and MPEG-DASH protocols.
 
 ## Features
 
@@ -26,6 +26,7 @@ A powerful and flexible streaming server that supports video on demand (VOD) and
 
 - 🔄 **Streaming Protocols**
   - HLS (HTTP Live Streaming)
+  - MPEG-DASH (standalone or dual-mode with HLS)
   - Configurable segment duration
 
 - 📊 **Monitoring**
@@ -47,7 +48,7 @@ The server is configured through `config.yml`. Here's a breakdown of the main co
 ### Server Configuration
 ```yaml
 server:
-  http: 8080  # HTTP port for HLS streaming
+  http: 8080  # HTTP port for HLS/DASH streaming
 ```
 
 ### Quality Profiles
@@ -93,7 +94,7 @@ stream_templates:
       type: video_unencoded
       video_input_path: "raw_videos/{username}"
       path: "records/{username}"
-      delete_after_encoding: true
+      delete_after_encoding: false
       qualities:
         low: *LOW
         medium: *MEDIUM
@@ -101,9 +102,24 @@ stream_templates:
       distribution:
         hls:
           segment_duration: 6
+```
+
+#### unencoded_video (DASH)
+```yaml
+stream_templates:
+  video_dash:
+    stream: &video_dash_config
+      type: video_unencoded
+      video_input_path: "raw_videos/{username}"
+      path: "records/{username}"
+      delete_after_encoding: false
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
         dash:
           segment_duration: 6
-          manifest_window: 5
 ```
 
 #### live
@@ -144,18 +160,67 @@ stream_templates:
           window_size: 5
 ```
 
+#### DASH-only live stream
+```yaml
+stream_templates:
+  live_dash:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        dash:
+          segment_duration: 2
+          window_size: 5
+```
+
+#### Dual-mode live stream (HLS + DASH)
+Both formats are produced from a single FFmpeg process. They share fMP4/CMAF segments (`.m4s`). HLS uses fMP4 instead of `.ts`.
+
+```yaml
+stream_templates:
+  live_dual:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+        dash:
+          segment_duration: 2  # Must match HLS segment_duration in dual mode
+          window_size: 5
+```
+
 **Output directory structure:**
 ```
-# Passthrough (no qualities)
+# HLS-only passthrough (no qualities)
 data/live/myuser/default/
   playlist.m3u8 + segment_*.ts
 
-# Multi-quality (with qualities)
+# HLS-only multi-quality (with qualities)
 data/live/myuser/
   master.m3u8
   low/playlist.m3u8 + segment_*.ts
   medium/playlist.m3u8 + segment_*.ts
   high/playlist.m3u8 + segment_*.ts
+
+# DASH-only (flat layout)
+data/live/myuser/
+  manifest.mpd
+  init-stream*.m4s + chunk-stream*.m4s
+
+# Dual mode (flat layout, both manifests)
+data/live/myuser/
+  manifest.mpd + master.m3u8
+  init-stream*.m4s + chunk-stream*.m4s
 ```
 
 For live streams, authentication is required using configurable XOR-based tokens.
@@ -211,27 +276,44 @@ delete_after_encoding: false  # Default: false
 - Deletion only occurs after successful encoding - if encoding fails, the source file is preserved
 
 ### Stream Distribution
-HLS configuration includes:
-- Segment duration: configurable per stream
-- Window size: number of segments in the live playlist (default: 3, live streams only)
+
+At least one distribution format (`hls` or `dash`) must be configured. Both can be enabled simultaneously for dual-mode output.
 
 ```yaml
+# HLS-only
 distribution:
   hls:
     segment_duration: 6
     window_size: 5       # Live streams only (default: 3)
+
+# DASH-only
+distribution:
+  dash:
+    segment_duration: 6
+    window_size: 5       # Live streams only (default: 3)
+
+# Dual mode (both HLS and DASH)
+distribution:
+  hls:
+    segment_duration: 2
+    window_size: 5
+  dash:
+    segment_duration: 2  # Must match HLS segment_duration
+    window_size: 5
 ```
+
+In dual mode, `segment_duration` must be identical between `hls` and `dash` (enforced at startup).
 
 ### Viewer & View Counting
 
-Theatrum can track concurrent viewers and total views per stream by monitoring `.ts` segment requests from unique client IPs. Both use a **delayed window** — they only count after a client has been watching continuously for `window` seconds.
+Theatrum can track concurrent viewers and total views per stream by monitoring `.ts` and `.m4s` segment requests from unique client IPs. Both use a **delayed window** — they only count after a client has been watching continuously for `window` seconds.
 
 - **`viewers.txt`** (live streams only): Returns the number of concurrent viewers. A viewer only appears in the count after watching for at least `window` seconds. If they stop requesting segments for `window` seconds, their session resets.
 - **`views.txt`** (all stream types): Returns the total number of viewing sessions. A view is only counted once a client has watched continuously for `window` seconds. A new session starts after `window` seconds of inactivity.
 
 Setting `window: 0` counts immediately on first request (no delay).
 
-Both files are served alongside `master.m3u8` at the stream's base URL (e.g., `http://localhost:8080/live/username/viewers.txt`).
+Both files are served alongside `master.m3u8` / `manifest.mpd` at the stream's base URL (e.g., `http://localhost:8080/live/username/viewers.txt`).
 
 ```yaml
 channels:
@@ -365,6 +447,7 @@ go run ./src/cmd/main.go
 - libx264 encoder
 - aac audio codec
 - HLS segmenter
+- DASH muxer (for DASH and dual-mode streams)
 
 ## Installation
 
@@ -443,6 +526,43 @@ stream_templates:
         high: *HIGH
       distribution:
         hls:
+          segment_duration: 2
+          window_size: 5
+```
+
+### Live Stream (DASH-only)
+```yaml
+stream_templates:
+  live_dash:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      distribution:
+        dash:
+          segment_duration: 2
+          window_size: 5
+```
+
+### Live Stream (Dual HLS + DASH)
+```yaml
+stream_templates:
+  live_dual:
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "your-secure-rtmp-secret-key"
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+        dash:
           segment_duration: 2
           window_size: 5
 ```

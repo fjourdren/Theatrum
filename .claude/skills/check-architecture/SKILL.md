@@ -148,13 +148,13 @@ Matches outside `main.go` and test files indicate DI bypass.
 
 ### Check 8: Shared FFmpeg Args Usage
 
-Check if `ffmpegargs` (a driven adapter internal) is imported outside its own adapter:
+`ffmpegargs` is a shared package at `src/shared/ffmpegargs/`. Check that it's only imported by the expected consumers:
 
 ```bash
-cd src && grep -rn '"Theatrum/adapters/driven/ffmpegEncoder/ffmpegargs"' | grep -v 'adapters/driven/ffmpegEncoder/'
+cd src && grep -rn '"Theatrum/shared/ffmpegargs"'
 ```
 
-Matches indicate cross-adapter dependency (known: `rtmp/management/process.go`).
+Expected importers: `adapters/driven/ffmpegEncoder/repositories/` and `adapters/driver/rtmp/management/`.
 
 ## Report Format
 

@@ -50,3 +50,7 @@ type Views struct {
 func (s *Stream) GetMasterPlaylistTemplatePath() string {
 	return fmt.Sprintf("%s/%s", s.Path, constants.MasterPlaylist)
 }
+
+func (s *Stream) GetDashManifestTemplatePath() string {
+	return fmt.Sprintf("%s/%s", s.Path, constants.DashManifest)
+}

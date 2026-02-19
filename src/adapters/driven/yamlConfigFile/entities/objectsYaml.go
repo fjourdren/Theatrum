@@ -43,10 +43,16 @@ type Quality struct {
 }
 
 type Distribution struct {
-	Hls Hls `yaml:"hls"`
+	Hls  *Hls  `yaml:"hls,omitempty"`
+	Dash *Dash `yaml:"dash,omitempty"`
 }
 
 type Hls struct {
+	SegmentDuration int `yaml:"segment_duration"`
+	WindowSize      int `yaml:"window_size,omitempty"`
+}
+
+type Dash struct {
 	SegmentDuration int `yaml:"segment_duration"`
 	WindowSize      int `yaml:"window_size,omitempty"`
 }
