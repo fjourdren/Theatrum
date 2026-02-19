@@ -227,7 +227,7 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 
 		// Check filename if specified in pattern
 		if hasFilename {
-			pathFilename := filepath.Base(slashPath)
+			pathFilename := filepath.Base(path)
 			patternFilename := filepath.Base(pattern)
 			if pathFilename != patternFilename {
 				return nil // filename doesn't match
@@ -250,7 +250,7 @@ func (fa *FileAccess) SearchFiles(pattern string, extensions []string) ([]string
 			}
 		}
 
-		matches := re.FindStringSubmatch(slashPath)
+		matches := re.FindStringSubmatch(path)
 		if len(matches) != len(varNames)+1 {
 			// Should never happen, but be defensive
 			return nil
