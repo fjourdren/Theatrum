@@ -6,7 +6,6 @@ import (
 	"sync"
 	"time"
 
-	"Theatrum/adapters/driven/metrics"
 	"Theatrum/domain/models"
 	"Theatrum/domain/repositories"
 	"Theatrum/domain/services"
@@ -24,14 +23,14 @@ type EncodeJobQueue struct {
 	jobs            chan EncodeJob
 	encodeService   *services.EncodeService
 	storage         repositories.StoragePort
-	metrics         *metrics.Metrics
+	metrics         repositories.EncodeMetricsPort
 	wg              sync.WaitGroup
 	ctx             context.Context
 	cancel          context.CancelFunc
 }
 
 // NewEncodeJobQueue creates a new encode job queue
-func NewEncodeJobQueue(encodeService *services.EncodeService, storage repositories.StoragePort, m *metrics.Metrics) *EncodeJobQueue {
+func NewEncodeJobQueue(encodeService *services.EncodeService, storage repositories.StoragePort, m repositories.EncodeMetricsPort) *EncodeJobQueue {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &EncodeJobQueue{
 		jobs:            make(chan EncodeJob, 100), // Buffer size of 100 jobs
@@ -62,7 +61,7 @@ func (q *EncodeJobQueue) Enqueue(job EncodeJob) error {
 	case <-q.ctx.Done():
 		return context.Canceled
 	case q.jobs <- job:
-		q.metrics.EncodeQueueDepth.Set(float64(len(q.jobs)))
+		q.metrics.SetEncodeQueueDepth(float64(len(q.jobs)))
 		return nil
 	}
 }
@@ -88,7 +87,7 @@ func (q *EncodeJobQueue) worker() {
 
 // processJob handles a single encoding job because encoder already manage multi-threading
 func (q *EncodeJobQueue) processJob(job EncodeJob) {
-	q.metrics.EncodeQueueDepth.Set(float64(len(q.jobs)))
+	q.metrics.SetEncodeQueueDepth(float64(len(q.jobs)))
 	startTime := time.Now()
 	log.Printf("Starting encode job: %s -> %s", job.InputStoragePath, job.OutputStoragePath)
 
@@ -99,18 +98,18 @@ func (q *EncodeJobQueue) processJob(job EncodeJob) {
 	)
 
 	duration := time.Since(startTime)
-	q.metrics.EncodeJobDuration.Observe(duration.Seconds())
+	q.metrics.ObserveEncodeJobDuration(duration.Seconds())
 
 	if err != nil {
 		log.Printf("Error processing encode job %s after %v: %v",
 			job.InputStoragePath,
 			duration.Round(time.Second),
 			err)
-		q.metrics.EncodeJobsTotal.WithLabelValues("failure").Inc()
+		q.metrics.IncEncodeJobsTotal("failure")
 		return
 	}
 
-	q.metrics.EncodeJobsTotal.WithLabelValues("success").Inc()
+	q.metrics.IncEncodeJobsTotal("success")
 	log.Printf("Successfully encoded video: %s (took %v)",
 		job.InputStoragePath,
 		duration.Round(time.Second))

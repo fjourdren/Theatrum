@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"Theatrum/adapters/driven/ffmpegEncoder/ffmpegargs"
+	"Theatrum/shared/ffmpegargs"
 	"Theatrum/adapters/driven/metrics"
 	"Theatrum/adapters/driver/rtmp/config"
 	"Theatrum/constants"

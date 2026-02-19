@@ -70,7 +70,7 @@ func main() {
 
 	// Provide job queue
 	container.Provide(func(encodeService *services.EncodeService, storage repositories.StoragePort, m *metrics.Metrics) *jobs.EncodeJobQueue {
-		return jobs.NewEncodeJobQueue(encodeService, storage, m)
+		return jobs.NewEncodeJobQueue(encodeService, storage, metrics.NewEncodeMetricsAdapter(m))
 	})
 
 	// Provide video detector
