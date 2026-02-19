@@ -73,6 +73,9 @@ type Stream struct {
 	Record            Record  `yaml:"record,omitempty"`
 	Viewers           Viewers `yaml:"viewers,omitempty"`
 	Views             Views   `yaml:"views,omitempty"`
+
+	// Specific fields for restream streams
+	SourceURL string `yaml:"source_url,omitempty"`
 }
 
 type Record struct {

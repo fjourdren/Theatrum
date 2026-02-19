@@ -89,6 +89,9 @@ func ToDomainStream(stream entities.Stream) models.Stream {
 		// Specific fields for live streams
 		LiveStreamKey:     stream.LiveStreamKey,
 		AuthTokenTemplate: stream.AuthTokenTemplate,
+
+		// Specific fields for restream streams
+		SourceURL: stream.SourceURL,
 		Record: models.Record{
 			Enabled: stream.Record.Enabled,
 			Path:    stream.Record.Path,

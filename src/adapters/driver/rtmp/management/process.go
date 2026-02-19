@@ -60,22 +60,33 @@ func DetermineOutputMode(dist models.Distribution) OutputMode {
 	return OutputModeHLS
 }
 
-// createFFmpegCommand creates an FFmpeg command with the specified settings.
+// inputArgs returns the FFmpeg input arguments based on the source URL.
+// When sourceURL is empty, it reads from stdin (FLV pipe). When set, it reads from the URL directly.
+func inputArgs(sourceURL string) []string {
+	if sourceURL != "" {
+		return []string{"-i", sourceURL}
+	}
+	return []string{"-f", "flv", "-i", "pipe:0"}
+}
+
+// CreateFFmpegCommand creates an FFmpeg command with the specified settings.
+// When sourceURL is empty, FFmpeg reads from stdin (FLV pipe for RTMP).
+// When sourceURL is set, FFmpeg reads directly from that URL (for restreaming).
 // When the stream has qualities defined, it produces multi-quality output.
 // Otherwise it uses codec copy for passthrough.
-func createFFmpegCommand(ctx context.Context, outputDir string, stream *models.Stream, mode OutputMode) *exec.Cmd {
+func CreateFFmpegCommand(ctx context.Context, sourceURL string, outputDir string, stream *models.Stream, mode OutputMode) *exec.Cmd {
 	multiQuality := len(stream.Qualities) > 0
 	switch mode {
 	case OutputModeDASH, OutputModeDual:
 		if multiQuality {
-			return createDashMultiQualityCommand(ctx, outputDir, stream, mode)
+			return createDashMultiQualityCommand(ctx, sourceURL, outputDir, stream, mode)
 		}
-		return createDashCopyCommand(ctx, outputDir, stream, mode)
+		return createDashCopyCommand(ctx, sourceURL, outputDir, stream, mode)
 	default: // OutputModeHLS
 		if multiQuality {
-			return createMultiQualityCommand(ctx, outputDir, stream)
+			return createMultiQualityCommand(ctx, sourceURL, outputDir, stream)
 		}
-		return createCopyCommand(ctx, outputDir, stream)
+		return createCopyCommand(ctx, sourceURL, outputDir, stream)
 	}
 }
 
@@ -97,16 +108,17 @@ func dashExtraWindowSize(recording bool) string {
 }
 
 // createCopyCommand creates an FFmpeg command that copies codecs without transcoding (passthrough, HLS-only).
-func createCopyCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
+func createCopyCommand(ctx context.Context, sourceURL string, outputDir string, stream *models.Stream) *exec.Cmd {
 	segmentDuration := fmt.Sprintf("%d", stream.Distribution.Hls.SegmentDuration)
 	windowSize := fmt.Sprintf("%d", stream.Distribution.Hls.WindowSize)
 
-	return exec.CommandContext(ctx, "ffmpeg",
+	args := []string{
 		"-re",
 		"-fflags", "+nobuffer",
 		"-flags", "low_delay",
-		"-f", "flv",
-		"-i", "pipe:0",
+	}
+	args = append(args, inputArgs(sourceURL)...)
+	args = append(args,
 		"-c:v", "copy",
 		"-c:a", "copy",
 		"-f", "hls",
@@ -118,10 +130,12 @@ func createCopyCommand(ctx context.Context, outputDir string, stream *models.Str
 		"-hls_segment_filename", filepath.Join(outputDir, constants.SegmentName),
 		filepath.Join(outputDir, constants.SubPlaylist),
 	)
+
+	return exec.CommandContext(ctx, "ffmpeg", args...)
 }
 
 // createMultiQualityCommand creates an FFmpeg command that transcodes into multiple quality levels (HLS-only).
-func createMultiQualityCommand(ctx context.Context, outputDir string, stream *models.Stream) *exec.Cmd {
+func createMultiQualityCommand(ctx context.Context, sourceURL string, outputDir string, stream *models.Stream) *exec.Cmd {
 	segmentDuration := fmt.Sprintf("%d", stream.Distribution.Hls.SegmentDuration)
 	windowSize := fmt.Sprintf("%d", stream.Distribution.Hls.WindowSize)
 
@@ -129,9 +143,8 @@ func createMultiQualityCommand(ctx context.Context, outputDir string, stream *mo
 		"-re",
 		"-fflags", "+nobuffer",
 		"-flags", "low_delay",
-		"-f", "flv",
-		"-i", "pipe:0",
 	}
+	args = append(args, inputArgs(sourceURL)...)
 
 	args = ffmpegargs.AddFilter(args, stream.Qualities)
 	args = ffmpegargs.AddVideoCodecLive(args, stream.Qualities)
@@ -156,7 +169,7 @@ func createMultiQualityCommand(ctx context.Context, outputDir string, stream *mo
 }
 
 // createDashCopyCommand creates an FFmpeg command for DASH/dual passthrough (codec copy).
-func createDashCopyCommand(ctx context.Context, outputDir string, stream *models.Stream, mode OutputMode) *exec.Cmd {
+func createDashCopyCommand(ctx context.Context, sourceURL string, outputDir string, stream *models.Stream, mode OutputMode) *exec.Cmd {
 	dist := stream.Distribution
 	var segDur, winSize int
 	if dist.DashEnabled() {
@@ -171,8 +184,9 @@ func createDashCopyCommand(ctx context.Context, outputDir string, stream *models
 		"-re",
 		"-fflags", "+nobuffer",
 		"-flags", "low_delay",
-		"-f", "flv",
-		"-i", "pipe:0",
+	}
+	args = append(args, inputArgs(sourceURL)...)
+	args = append(args,
 		"-c:v", "copy",
 		"-c:a", "copy",
 		"-f", "dash",
@@ -186,7 +200,7 @@ func createDashCopyCommand(ctx context.Context, outputDir string, stream *models
 		"-remove_at_exit", "0",
 		"-init_seg_name", constants.DashInitSegName,
 		"-media_seg_name", constants.DashSegName,
-	}
+	)
 
 	if mode == OutputModeDual {
 		args = append(args, "-hls_playlist", "1")
@@ -197,7 +211,7 @@ func createDashCopyCommand(ctx context.Context, outputDir string, stream *models
 }
 
 // createDashMultiQualityCommand creates an FFmpeg command for DASH/dual multi-quality transcoding.
-func createDashMultiQualityCommand(ctx context.Context, outputDir string, stream *models.Stream, mode OutputMode) *exec.Cmd {
+func createDashMultiQualityCommand(ctx context.Context, sourceURL string, outputDir string, stream *models.Stream, mode OutputMode) *exec.Cmd {
 	dist := stream.Distribution
 	var segDur, winSize int
 	if dist.DashEnabled() {
@@ -212,9 +226,8 @@ func createDashMultiQualityCommand(ctx context.Context, outputDir string, stream
 		"-re",
 		"-fflags", "+nobuffer",
 		"-flags", "low_delay",
-		"-f", "flv",
-		"-i", "pipe:0",
 	}
+	args = append(args, inputArgs(sourceURL)...)
 
 	args = ffmpegargs.AddFilter(args, stream.Qualities)
 	args = ffmpegargs.AddVideoCodecLive(args, stream.Qualities)
@@ -371,7 +384,7 @@ func (sp *StreamProcess) saveRecording() {
 				sp.metrics.RecordingsTotal.WithLabelValues("move", "failure", sp.trackingKey).Inc()
 				return
 			}
-			if err := generateMasterPlaylistWrapper(recordDir); err != nil {
+			if err := GenerateMasterPlaylistWrapper(recordDir); err != nil {
 				log.Printf("Error generating master playlist wrapper for recording: %v", err)
 			}
 			viewsSrc := filepath.Join(sp.streamRootDir, constants.ViewsFile)
@@ -429,7 +442,7 @@ func (sp *StreamProcess) saveInPlace() {
 			if err := generateVODPlaylist(sp.outputDir, sp.segmentDuration); err != nil {
 				log.Printf("Error generating VOD playlist: %v", err)
 			}
-			if err := generateMasterPlaylistWrapper(sp.streamRootDir); err != nil {
+			if err := GenerateMasterPlaylistWrapper(sp.streamRootDir); err != nil {
 				log.Printf("Error generating master playlist wrapper for in-place recording: %v", err)
 			}
 		}

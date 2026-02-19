@@ -178,7 +178,7 @@ func TestGenerateVODPlaylist(t *testing.T) {
 func TestGenerateMasterPlaylistWrapper(t *testing.T) {
 	dir := t.TempDir()
 
-	err := generateMasterPlaylistWrapper(dir)
+	err := GenerateMasterPlaylistWrapper(dir)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

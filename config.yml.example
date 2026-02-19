@@ -194,3 +194,43 @@ channels:
   "/live/{username}":
     stream:
       <<: *live_stream_config
+
+  # Restream: pull from external RTMP URL (passthrough, no transcoding)
+  "/restream/mystream":
+    stream:
+      type: restream
+      source_url: "rtmp://external-server/live/stream_key"
+      path: "restream/mystream"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+
+  # Restream with multi-quality transcoding
+  # "/restream/premium":
+  #   stream:
+  #     type: restream
+  #     source_url: "rtmp://external-server/live/stream_key"
+  #     path: "restream/premium"
+  #     qualities:
+  #       low: *LOW
+  #       medium: *MEDIUM
+  #       high: *HIGH
+  #     distribution:
+  #       hls:
+  #         segment_duration: 2
+  #         window_size: 5
+
+  # Restream with recording
+  # "/restream/recorded":
+  #   stream:
+  #     type: restream
+  #     source_url: "rtmp://external-server/live/stream_key"
+  #     path: "restream/recorded/{%STARTING_DATE%}"
+  #     distribution:
+  #       hls:
+  #         segment_duration: 2
+  #         window_size: 5
+  #     record:
+  #       enabled: true
+  #       path: "recordings/restream/{%STARTING_DATE%}"

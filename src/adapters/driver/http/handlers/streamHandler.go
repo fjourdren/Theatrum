@@ -81,7 +81,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set cache control headers based on stream type and file type
-	isLive := h.stream.Type == models.StreamTypeLive
+	isLive := h.stream.Type == models.StreamTypeLive || h.stream.Type == models.StreamTypeRestream
 	switch ext {
 	case ".m3u8", ".mpd":
 		if isLive {
@@ -108,8 +108,8 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// Compute tracking key for viewer/view tracking
 	var trackingKey string
 
-	// For live streams, look up pre-resolved builtin vars from the registry
-	if h.stream.Type == models.StreamTypeLive {
+	// For live and restream streams, look up pre-resolved builtin vars from the registry
+	if h.stream.Type == models.StreamTypeLive || h.stream.Type == models.StreamTypeRestream {
 		// Compute stream key (same formula as RTMP side: resolve user vars only)
 		streamKey, err := h.templateService.ReplacePlaceholders(h.stream.Path, vars)
 		if err != nil {
@@ -187,7 +187,7 @@ func (h *StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Determine metric labels
 	streamType := "vod"
-	if h.stream.Type == models.StreamTypeLive {
+	if h.stream.Type == models.StreamTypeLive || h.stream.Type == models.StreamTypeRestream {
 		streamType = "live"
 	}
 	fileType := "other"

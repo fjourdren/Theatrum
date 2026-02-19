@@ -11,7 +11,8 @@ type StreamType string
 const (
 	StreamTypeVideoUnEncoded StreamType = "video_unencoded"
 	StreamTypeVideoEncoded   StreamType = "video_encoded"
-	StreamTypeLive StreamType = "live"
+	StreamTypeLive           StreamType = "live"
+	StreamTypeRestream       StreamType = "restream"
 )
 
 type Stream struct {
@@ -27,9 +28,12 @@ type Stream struct {
 	// Specific fields for live streams
 	LiveStreamKey     string
 	AuthTokenTemplate string // Template for XOR auth input, uses {var} placeholders
-	Record            Record // Recording settings (live streams only)
-	Viewers           Viewers // Concurrent viewer tracking (live streams only)
+	Record            Record // Recording settings (live and restream streams only)
+	Viewers           Viewers // Concurrent viewer tracking (live and restream streams only)
 	Views             Views   // Total view count tracking (all stream types)
+
+	// Specific fields for restream streams
+	SourceURL string // External URL to pull from (RTMP or any FFmpeg-compatible protocol)
 }
 
 type Record struct {

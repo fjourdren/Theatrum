@@ -22,6 +22,7 @@ import (
 	yamlConfigFileRepository "Theatrum/adapters/driven/yamlConfigFile/repositories"
 	httpAdapter "Theatrum/adapters/driver/http"
 	"Theatrum/adapters/driver/ports"
+	restreamAdapter "Theatrum/adapters/driver/restream"
 	rtmpAdapter "Theatrum/adapters/driver/rtmp"
 	"Theatrum/constants"
 	"Theatrum/domain/services"
@@ -51,6 +52,7 @@ type TestServer struct {
 	ViewerTracker   *services.ViewerTracker
 	HTTPServer      ports.HttpPort
 	RTMPServer      ports.RtmpPort
+	RestreamManager ports.RestreamPort
 }
 
 // setupTestServer creates and starts a full server stack for E2E testing.
@@ -92,6 +94,7 @@ func setupTestServer(t *testing.T, cfg TestConfig) *TestServer {
 	// Create servers
 	httpServer := httpAdapter.NewHttpServer(appService, streamService, templateService, registry, viewerTracker, m)
 	rtmpServer := rtmpAdapter.NewRtmpServer(appService, streamService, rtmpAuthService, templateService, registry, viewerTracker, m)
+	restreamManager := restreamAdapter.NewRestreamManager(appService, templateService, registry, viewerTracker, m)
 
 	// Start HTTP server
 	go func() {
@@ -108,6 +111,9 @@ func setupTestServer(t *testing.T, cfg TestConfig) *TestServer {
 		}
 	}()
 
+	// Start restream manager
+	restreamManager.Start()
+
 	// Wait for servers to be ready
 	httpAddr := fmt.Sprintf("127.0.0.1:%d", httpPort)
 	rtmpAddr := fmt.Sprintf("127.0.0.1:%d", rtmpPort)
@@ -116,19 +122,21 @@ func setupTestServer(t *testing.T, cfg TestConfig) *TestServer {
 	waitForTCP(t, rtmpAddr, 5*time.Second)
 
 	ts := &TestServer{
-		HTTPAddr:      httpAddr,
-		RTMPAddr:      rtmpAddr,
-		HTTPPort:      httpPort,
-		RTMPPort:      rtmpPort,
-		DataDir:       constants.VideoDir,
-		AppService:    appService,
-		ViewerTracker: viewerTracker,
-		HTTPServer:    httpServer,
-		RTMPServer:    rtmpServer,
+		HTTPAddr:        httpAddr,
+		RTMPAddr:        rtmpAddr,
+		HTTPPort:        httpPort,
+		RTMPPort:        rtmpPort,
+		DataDir:         constants.VideoDir,
+		AppService:      appService,
+		ViewerTracker:   viewerTracker,
+		HTTPServer:      httpServer,
+		RTMPServer:      rtmpServer,
+		RestreamManager: restreamManager,
 	}
 
 	// Register cleanup
 	t.Cleanup(func() {
+		restreamManager.Stop()
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		httpServer.Shutdown(ctx)

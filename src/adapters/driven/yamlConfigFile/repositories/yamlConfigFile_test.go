@@ -41,6 +41,17 @@ func validLiveStream() yamlConfigFileEntities.Stream {
 	}
 }
 
+func validRestreamStream() yamlConfigFileEntities.Stream {
+	return yamlConfigFileEntities.Stream{
+		Type:      string(models.StreamTypeRestream),
+		Path:      "restream/mystream",
+		SourceURL: "rtmp://external-server/live/stream_key",
+		Distribution: yamlConfigFileEntities.Distribution{
+			Hls: &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
+		},
+	}
+}
+
 func TestYamlConfigFile_validateConfig(t *testing.T) {
 	v := newValidator()
 
@@ -617,6 +628,226 @@ channels:
 		_, _, _, err := loader.Load(configPath)
 		if err == nil {
 			t.Error("expected error for mismatched segment durations in dual mode")
+		}
+	})
+}
+
+func TestYamlConfigFile_validateStream_Restream(t *testing.T) {
+	v := newValidator()
+
+	t.Run("valid restream config", func(t *testing.T) {
+		stream := validRestreamStream()
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("missing source_url", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.SourceURL = ""
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for missing source_url")
+		}
+	})
+
+	t.Run("with live_stream_key set", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.LiveStreamKey = "secret"
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for live_stream_key on restream")
+		}
+	})
+
+	t.Run("with auth_token_template set", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.AuthTokenTemplate = "{username}"
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for auth_token_template on restream")
+		}
+	})
+
+	t.Run("with video_input_path set", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.VideoInputPath = "raw/test"
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for video_input_path on restream")
+		}
+	})
+
+	t.Run("with delete_after_encoding set", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.DeleteAfterEncoding = true
+		if err := v.validateStream(stream, "test"); err == nil {
+			t.Error("expected error for delete_after_encoding on restream")
+		}
+	})
+
+	t.Run("with qualities", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.Qualities = map[string]yamlConfigFileEntities.Quality{
+			"low": {Width: 640, Height: 360, Framerate: 30, Bitrate: "800k", Codec: "libx264", Audio: yamlConfigFileEntities.Audio{Bitrate: "64k", Codec: "aac"}},
+		}
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error for restream with qualities: %v", err)
+		}
+	})
+
+	t.Run("with recording", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.Record = yamlConfigFileEntities.Record{Enabled: true, Path: "recordings/mystream"}
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error for restream with recording: %v", err)
+		}
+	})
+
+	t.Run("with viewers", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.Viewers = yamlConfigFileEntities.Viewers{Enabled: true, Window: 30}
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error for restream with viewers: %v", err)
+		}
+	})
+
+	t.Run("with views", func(t *testing.T) {
+		stream := validRestreamStream()
+		stream.Views = yamlConfigFileEntities.Views{Enabled: true, Window: 30}
+		if err := v.validateStream(stream, "test"); err != nil {
+			t.Errorf("unexpected error for restream with views: %v", err)
+		}
+	})
+}
+
+func TestYamlConfigFile_validateRestreamChannel(t *testing.T) {
+	v := newValidator()
+
+	tests := []struct {
+		name        string
+		channelName string
+		stream      yamlConfigFileEntities.Stream
+		wantErr     bool
+	}{
+		{
+			"valid literal channel",
+			"/restream/mystream",
+			yamlConfigFileEntities.Stream{Path: "restream/mystream"},
+			false,
+		},
+		{
+			"valid path with builtin function",
+			"/restream/mystream",
+			yamlConfigFileEntities.Stream{Path: "restream/mystream/{%STARTING_DATE%}"},
+			false,
+		},
+		{
+			"channel key with user variable",
+			"/restream/{username}",
+			yamlConfigFileEntities.Stream{Path: "restream/mystream"},
+			true,
+		},
+		{
+			"path with user variable",
+			"/restream/mystream",
+			yamlConfigFileEntities.Stream{Path: "restream/{username}"},
+			true,
+		},
+		{
+			"record path with user variable",
+			"/restream/mystream",
+			yamlConfigFileEntities.Stream{
+				Path:   "restream/mystream",
+				Record: yamlConfigFileEntities.Record{Enabled: true, Path: "recordings/{username}"},
+			},
+			true,
+		},
+		{
+			"record path with builtin only",
+			"/restream/mystream",
+			yamlConfigFileEntities.Stream{
+				Path:   "restream/mystream",
+				Record: yamlConfigFileEntities.Record{Enabled: true, Path: "recordings/{%STARTING_DATE%}"},
+			},
+			false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := v.validateRestreamChannel(tt.channelName, tt.stream)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateRestreamChannel() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestYamlConfigFile_Load_Restream(t *testing.T) {
+	t.Run("restream config loads correctly", func(t *testing.T) {
+		configContent := `
+application:
+  public_path: "http://localhost:8080"
+server:
+  http: 8080
+  rtmp: 1935
+channels:
+  "/restream/mystream":
+    stream:
+      type: restream
+      source_url: "rtmp://external-server/live/stream_key"
+      path: "restream/mystream"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		loader := NewYamlConfigFile()
+		_, _, channels, err := loader.Load(configPath)
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+
+		ch := (*channels)["/restream/mystream"]
+		if ch.Type != models.StreamTypeRestream {
+			t.Errorf("expected StreamTypeRestream, got %s", ch.Type)
+		}
+		if ch.SourceURL != "rtmp://external-server/live/stream_key" {
+			t.Errorf("expected SourceURL rtmp://external-server/live/stream_key, got %q", ch.SourceURL)
+		}
+	})
+
+	t.Run("restream with user variable in path rejected", func(t *testing.T) {
+		configContent := `
+application:
+  public_path: "http://localhost:8080"
+server:
+  http: 8080
+  rtmp: 1935
+channels:
+  "/restream/{username}":
+    stream:
+      type: restream
+      source_url: "rtmp://external-server/live/stream_key"
+      path: "restream/{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		loader := NewYamlConfigFile()
+		_, _, _, err := loader.Load(configPath)
+		if err == nil {
+			t.Error("expected error for user variable in restream channel path")
 		}
 	})
 }

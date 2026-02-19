@@ -101,6 +101,13 @@ func (y *YamlConfigFile) validateConfig(config *yamlConfigFileEntities.Config) e
 				return err
 			}
 		}
+
+		// Restream channels must not contain user variable placeholders
+		if channel.Stream.Type == string(models.StreamTypeRestream) {
+			if err := y.validateRestreamChannel(name, channel.Stream); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -114,9 +121,10 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 	}
 
 	// get stream type from StreamTypeVideoEncoded
-	if stream.Type != string(models.StreamTypeVideoEncoded) && 
-	   stream.Type != string(models.StreamTypeVideoUnEncoded) && 
-	   stream.Type != string(models.StreamTypeLive) {
+	if stream.Type != string(models.StreamTypeVideoEncoded) &&
+	   stream.Type != string(models.StreamTypeVideoUnEncoded) &&
+	   stream.Type != string(models.StreamTypeLive) &&
+	   stream.Type != string(models.StreamTypeRestream) {
 		return fmt.Errorf("%s has invalid type: %s", context, stream.Type)
 	}
 
@@ -129,9 +137,9 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 		return err
 	}
 
-	// Validate viewers config: only valid for live streams
-	if stream.Viewers.Enabled && stream.Type != string(models.StreamTypeLive) {
-		return fmt.Errorf("%s has viewers enabled but is not a live stream (only live streams support viewer tracking)", context)
+	// Validate viewers config: only valid for live and restream streams
+	if stream.Viewers.Enabled && stream.Type != string(models.StreamTypeLive) && stream.Type != string(models.StreamTypeRestream) {
+		return fmt.Errorf("%s has viewers enabled but is not a live or restream stream (only live and restream streams support viewer tracking)", context)
 	}
 	if stream.Viewers.Enabled && stream.Viewers.Window <= 0 {
 		return fmt.Errorf("%s has invalid viewers window: must be > 0 (viewers require an expiry window)", context)
@@ -178,6 +186,30 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 				return err
 			}
 		}
+	} else if stream.Type == string(models.StreamTypeRestream) {
+		// Validate restream specific fields
+		if stream.SourceURL == "" {
+			return fmt.Errorf("%s of type restream must have source_url", context)
+		}
+		// For restream streams, these fields should not be set
+		if stream.LiveStreamKey != "" {
+			return fmt.Errorf("%s of type restream should not have live_stream_key", context)
+		}
+		if stream.AuthTokenTemplate != "" {
+			return fmt.Errorf("%s of type restream should not have auth_token_template", context)
+		}
+		if stream.VideoInputPath != "" {
+			return fmt.Errorf("%s of type restream should not have video_input_path", context)
+		}
+		if stream.DeleteAfterEncoding {
+			return fmt.Errorf("%s of type restream should not have delete_after_encoding enabled", context)
+		}
+		// Validate record settings
+		if stream.Record.Enabled && stream.Record.Path != "" {
+			if err := y.validatePath(stream.Record.Path, fmt.Sprintf("%s record path", context)); err != nil {
+				return err
+			}
+		}
 	} else {
 		// For video_encoded streams, these fields should not be set
 		if stream.Record.Enabled {
@@ -187,7 +219,7 @@ func (y *YamlConfigFile) validateStream(stream yamlConfigFileEntities.Stream, co
 
 	// Validate qualities
 	// TODO : make qualities optional for some types of streams
-	if stream.Type != string(models.StreamTypeLive) && len(stream.Qualities) == 0 {
+	if stream.Type != string(models.StreamTypeLive) && stream.Type != string(models.StreamTypeRestream) && len(stream.Qualities) == 0 {
 		return fmt.Errorf("%s has no quality profiles defined", context)
 	}
 
@@ -295,6 +327,25 @@ func (y *YamlConfigFile) validateAuthTokenTemplate(channelName string, stream ya
 		if !strings.Contains(channelName, varPlaceholder) {
 			return fmt.Errorf("channel '%s': auth_token_template references {%s} but channel pattern doesn't contain it", channelName, varName)
 		}
+	}
+
+	return nil
+}
+
+// validateRestreamChannel checks that restream channels don't use user variable placeholders ({var})
+// in channel name, stream path, or record path. Only builtin functions ({%FUNC%}) are allowed.
+func (y *YamlConfigFile) validateRestreamChannel(channelName string, stream yamlConfigFileEntities.Stream) error {
+	// Regex matches {var} but not {%FUNC%}
+	userVarRegex := regexp.MustCompile(`\{([^%][^}]*)\}`)
+
+	if userVarRegex.MatchString(channelName) {
+		return fmt.Errorf("channel '%s': restream channels must not contain user variable placeholders like {var} in channel name", channelName)
+	}
+	if userVarRegex.MatchString(stream.Path) {
+		return fmt.Errorf("channel '%s': restream stream path must not contain user variable placeholders like {var}", channelName)
+	}
+	if stream.Record.Enabled && stream.Record.Path != "" && userVarRegex.MatchString(stream.Record.Path) {
+		return fmt.Errorf("channel '%s': restream record path must not contain user variable placeholders like {var}", channelName)
 	}
 
 	return nil

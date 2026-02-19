@@ -76,13 +76,13 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, streamCon
 
 	// Generate master.m3u8 wrapper for HLS-only passthrough streams
 	if outputMode == OutputModeHLS && !multiQuality {
-		if err := generateMasterPlaylistWrapper(streamRootDir); err != nil {
+		if err := GenerateMasterPlaylistWrapper(streamRootDir); err != nil {
 			return nil, fmt.Errorf("failed to generate master playlist wrapper: %v", err)
 		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := createFFmpegCommand(ctx, outputDir, streamConfig, outputMode)
+	cmd := CreateFFmpegCommand(ctx, "", outputDir, streamConfig, outputMode)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

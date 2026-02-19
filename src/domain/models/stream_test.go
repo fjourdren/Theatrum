@@ -6,6 +6,12 @@ import (
 	"Theatrum/constants"
 )
 
+func TestStreamTypeRestream(t *testing.T) {
+	if StreamTypeRestream != "restream" {
+		t.Errorf("expected StreamTypeRestream = \"restream\", got %q", StreamTypeRestream)
+	}
+}
+
 func TestStream_GetMasterPlaylistTemplatePath(t *testing.T) {
 	tests := []struct {
 		name   string

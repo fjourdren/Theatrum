@@ -240,6 +240,25 @@ func TestToDomainStream(t *testing.T) {
 	})
 }
 
+func TestToDomainStream_SourceURL(t *testing.T) {
+	stream := entities.Stream{
+		Type:      "restream",
+		Path:      "restream/mystream",
+		SourceURL: "rtmp://external-server/live/stream_key",
+		Distribution: entities.Distribution{
+			Hls: &entities.Hls{SegmentDuration: 2, WindowSize: 3},
+		},
+	}
+
+	result := ToDomainStream(stream)
+	if result.Type != models.StreamTypeRestream {
+		t.Errorf("expected StreamTypeRestream, got %s", result.Type)
+	}
+	if result.SourceURL != "rtmp://external-server/live/stream_key" {
+		t.Errorf("expected SourceURL rtmp://external-server/live/stream_key, got %q", result.SourceURL)
+	}
+}
+
 func TestToDomainChannels(t *testing.T) {
 	channels := map[string]entities.Channel{
 		"/user/{username}": {
