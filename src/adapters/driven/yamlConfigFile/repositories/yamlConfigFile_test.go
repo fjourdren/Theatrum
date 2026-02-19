@@ -259,9 +259,9 @@ func TestYamlConfigFile_validateDistribution(t *testing.T) {
 			false,
 		},
 		{
-			"valid dual mode matching segment_duration",
+			"valid dual mode matching segment_duration and window_size",
 			yamlConfigFileEntities.Distribution{
-				Hls:  &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
+				Hls:  &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 5},
 				Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 2, WindowSize: 5},
 			},
 			false,
@@ -271,6 +271,14 @@ func TestYamlConfigFile_validateDistribution(t *testing.T) {
 			yamlConfigFileEntities.Distribution{
 				Hls:  &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
 				Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 4, WindowSize: 3},
+			},
+			true,
+		},
+		{
+			"dual mode mismatched window_size",
+			yamlConfigFileEntities.Distribution{
+				Hls:  &yamlConfigFileEntities.Hls{SegmentDuration: 2, WindowSize: 3},
+				Dash: &yamlConfigFileEntities.Dash{SegmentDuration: 2, WindowSize: 5},
 			},
 			true,
 		},
@@ -513,7 +521,7 @@ channels:
           window_size: 3
         dash:
           segment_duration: 2
-          window_size: 5
+          window_size: 3
 `
 		tmpDir := t.TempDir()
 		configPath := filepath.Join(tmpDir, "config.yml")
@@ -539,6 +547,41 @@ channels:
 		}
 		if ch.Distribution.Dash.SegmentDuration != 2 {
 			t.Errorf("expected DASH SegmentDuration 2, got %d", ch.Distribution.Dash.SegmentDuration)
+		}
+	})
+
+	t.Run("dual mode mismatched window size rejected", func(t *testing.T) {
+		configContent := `
+application:
+  public_path: "http://localhost:8080"
+server:
+  http: 8080
+  rtmp: 1935
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "secret"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3
+        dash:
+          segment_duration: 2
+          window_size: 5
+`
+		tmpDir := t.TempDir()
+		configPath := filepath.Join(tmpDir, "config.yml")
+		if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+			t.Fatalf("failed to write config file: %v", err)
+		}
+
+		loader := NewYamlConfigFile()
+		_, _, _, err := loader.Load(configPath)
+		if err == nil {
+			t.Fatal("expected error for mismatched window_size in dual mode")
 		}
 	})
 

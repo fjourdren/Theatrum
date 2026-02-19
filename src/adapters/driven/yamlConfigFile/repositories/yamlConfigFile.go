@@ -264,11 +264,15 @@ func (y *YamlConfigFile) validateDistribution(distribution yamlConfigFileEntitie
 		}
 	}
 
-	// In dual mode, segment durations must match
+	// In dual mode, segment durations and window sizes must match
 	if distribution.Hls != nil && distribution.Dash != nil {
 		if distribution.Hls.SegmentDuration != distribution.Dash.SegmentDuration {
 			return fmt.Errorf("%s has mismatched segment_duration between HLS (%d) and DASH (%d): must be equal in dual mode",
 				context, distribution.Hls.SegmentDuration, distribution.Dash.SegmentDuration)
+		}
+		if distribution.Hls.WindowSize != distribution.Dash.WindowSize {
+			return fmt.Errorf("%s has mismatched window_size between HLS (%d) and DASH (%d): must be equal in dual mode",
+				context, distribution.Hls.WindowSize, distribution.Dash.WindowSize)
 		}
 	}
 

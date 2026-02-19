@@ -93,7 +93,7 @@ channels:
           window_size: 3
         dash:
           segment_duration: 2
-          window_size: 5
+          window_size: 3
 `
 	configPath := filepath.Join(t.TempDir(), "config.yml")
 	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
@@ -109,6 +109,45 @@ channels:
 	ch := (*channels)["/user/{username}"]
 	if !ch.Distribution.IsDualMode() {
 		t.Error("Expected dual mode (both HLS and DASH enabled)")
+	}
+}
+
+func TestConfigLoading_DualModeMismatchedWindowSize(t *testing.T) {
+	configContent := `
+application:
+  public_path: "http://localhost:8080"
+  all_streams_playlist:
+    enabled: false
+    path: ""
+
+server:
+  http: 8080
+  rtmp: 1935
+
+channels:
+  "/user/{username}":
+    stream:
+      type: live
+      path: "live/{username}"
+      live_stream_key: "secret"
+      auth_token_template: "{username}"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 3
+        dash:
+          segment_duration: 2
+          window_size: 5
+`
+	configPath := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(configPath, []byte(configContent), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	repo := yamlConfigFileRepository.NewYamlConfigFile()
+	_, _, _, err := repo.Load(configPath)
+	if err == nil {
+		t.Fatal("Expected error for mismatched window_size in dual mode, got nil")
 	}
 }
 
