@@ -554,6 +554,55 @@ func TestLiveStreamRegistry(t *testing.T) {
 		}
 	})
 
+	t.Run("re-registration after Unregister uses new vars", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		first := map[string]string{"UUID": "first-uuid"}
+		second := map[string]string{"UUID": "second-uuid"}
+
+		registry.GetOrRegister("key1", first)
+		registry.Unregister("key1")
+
+		result := registry.GetOrRegister("key1", second)
+		if result["UUID"] != "second-uuid" {
+			t.Errorf("got %q, expected %q after re-registration", result["UUID"], "second-uuid")
+		}
+	})
+
+	t.Run("multiple keys are independent", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		registry.GetOrRegister("key1", map[string]string{"UUID": "uuid-1"})
+		registry.GetOrRegister("key2", map[string]string{"UUID": "uuid-2"})
+
+		vars1, ok1 := registry.GetBuiltinVars("key1")
+		vars2, ok2 := registry.GetBuiltinVars("key2")
+		if !ok1 || !ok2 {
+			t.Fatal("expected both keys to exist")
+		}
+		if vars1["UUID"] != "uuid-1" {
+			t.Errorf("key1: got %q, expected uuid-1", vars1["UUID"])
+		}
+		if vars2["UUID"] != "uuid-2" {
+			t.Errorf("key2: got %q, expected uuid-2", vars2["UUID"])
+		}
+
+		// Unregistering one key should not affect the other
+		registry.Unregister("key1")
+		_, ok1 = registry.GetBuiltinVars("key1")
+		_, ok2 = registry.GetBuiltinVars("key2")
+		if ok1 {
+			t.Error("expected key1 to be removed")
+		}
+		if !ok2 {
+			t.Error("expected key2 to still exist")
+		}
+	})
+
+	t.Run("Unregister nonexistent key is safe", func(t *testing.T) {
+		registry := NewLiveStreamRegistry()
+		// Should not panic
+		registry.Unregister("nonexistent")
+	})
+
 	t.Run("concurrent GetOrRegister returns consistent values", func(t *testing.T) {
 		registry := NewLiveStreamRegistry()
 		results := make(chan string, 100)

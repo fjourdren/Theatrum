@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"Theatrum/shared/streamcmd"
 )
 
 func TestPickBestQualityDir(t *testing.T) {
@@ -75,7 +77,7 @@ func TestFindLatestSegment_HLSPassthrough(t *testing.T) {
 	tg := &ThumbnailGenerator{
 		streamRootDir: tmpDir,
 		outputDir:     outputDir,
-		outputMode:    OutputModeHLS,
+		outputMode:    streamcmd.OutputModeHLS,
 		multiQuality:  false,
 	}
 
@@ -99,7 +101,7 @@ func TestFindLatestSegment_DASH(t *testing.T) {
 	tg := &ThumbnailGenerator{
 		streamRootDir: tmpDir,
 		outputDir:     tmpDir,
-		outputMode:    OutputModeDASH,
+		outputMode:    streamcmd.OutputModeDASH,
 		multiQuality:  false,
 	}
 
@@ -121,7 +123,7 @@ func TestFindLatestSegment_HLSMultiQuality(t *testing.T) {
 	tg := &ThumbnailGenerator{
 		streamRootDir: tmpDir,
 		outputDir:     tmpDir,
-		outputMode:    OutputModeHLS,
+		outputMode:    streamcmd.OutputModeHLS,
 		multiQuality:  true,
 		qualities:     []string{"low", "medium", "high"},
 	}
@@ -138,7 +140,7 @@ func TestFindLatestSegment_NoSegments(t *testing.T) {
 	tg := &ThumbnailGenerator{
 		streamRootDir: tmpDir,
 		outputDir:     tmpDir,
-		outputMode:    OutputModeHLS,
+		outputMode:    streamcmd.OutputModeHLS,
 		multiQuality:  false,
 	}
 
@@ -151,7 +153,7 @@ func TestFindLatestSegment_NoSegments(t *testing.T) {
 func TestThumbnailGenerator_StartStop(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	tg := NewThumbnailGenerator(tmpDir, tmpDir, OutputModeHLS, false, nil, 1)
+	tg := NewThumbnailGenerator(tmpDir, tmpDir, streamcmd.OutputModeHLS, false, nil, 1)
 	tg.Start()
 
 	// Give it a moment to tick

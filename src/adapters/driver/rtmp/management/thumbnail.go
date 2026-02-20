@@ -12,13 +12,14 @@ import (
 	"time"
 
 	"Theatrum/constants"
+	"Theatrum/shared/streamcmd"
 )
 
 // ThumbnailGenerator periodically extracts a PNG frame from the latest segment.
 type ThumbnailGenerator struct {
 	streamRootDir string
 	outputDir     string
-	outputMode    OutputMode
+	outputMode    streamcmd.OutputMode
 	multiQuality  bool
 	qualities     []string
 	interval      time.Duration
@@ -27,7 +28,7 @@ type ThumbnailGenerator struct {
 }
 
 // NewThumbnailGenerator creates a new ThumbnailGenerator.
-func NewThumbnailGenerator(streamRootDir, outputDir string, outputMode OutputMode, multiQuality bool, qualities []string, intervalSec int) *ThumbnailGenerator {
+func NewThumbnailGenerator(streamRootDir, outputDir string, outputMode streamcmd.OutputMode, multiQuality bool, qualities []string, intervalSec int) *ThumbnailGenerator {
 	return &ThumbnailGenerator{
 		streamRootDir: streamRootDir,
 		outputDir:     outputDir,
@@ -120,10 +121,10 @@ func (tg *ThumbnailGenerator) buildFFmpegArgs(segmentPath, outputPath string) []
 // findLatestSegment locates the most recently modified segment file.
 func (tg *ThumbnailGenerator) findLatestSegment() string {
 	switch {
-	case tg.outputMode == OutputModeHLS && !tg.multiQuality:
+	case tg.outputMode == streamcmd.OutputModeHLS && !tg.multiQuality:
 		// HLS passthrough: segments in outputDir (the default/ subdir)
 		return findLatestFileByGlob(filepath.Join(tg.outputDir, "*.ts"))
-	case tg.outputMode == OutputModeHLS && tg.multiQuality:
+	case tg.outputMode == streamcmd.OutputModeHLS && tg.multiQuality:
 		// HLS multi-quality: use best quality dir
 		bestDir := tg.pickBestQualityDir()
 		if bestDir == "" {

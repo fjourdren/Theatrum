@@ -1,6 +1,6 @@
 //go:build !e2e
 
-package stream
+package streamcmd
 
 import (
 	"context"

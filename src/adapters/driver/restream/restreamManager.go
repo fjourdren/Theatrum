@@ -12,10 +12,10 @@ import (
 
 	"Theatrum/adapters/driven/metrics"
 	"Theatrum/adapters/driver/ports"
-	stream "Theatrum/adapters/driver/rtmp/management"
 	"Theatrum/constants"
 	"Theatrum/domain/models"
 	"Theatrum/domain/services"
+	"Theatrum/shared/streamcmd"
 )
 
 // Verify interface implementation
@@ -82,7 +82,7 @@ func (rm *RestreamManager) Start() {
 
 		// Determine output directory based on distribution mode
 		multiQuality := len(ch.Qualities) > 0
-		outputMode := stream.DetermineOutputMode(ch.Distribution)
+		outputMode := streamcmd.DetermineOutputMode(ch.Distribution)
 		dashEnabled := ch.Distribution.DashEnabled()
 
 		var outputDir, streamRootDir string
@@ -130,7 +130,7 @@ func (rm *RestreamManager) runWithReconnect(
 	streamRootDir string,
 	resolvedRecordPath string,
 	trackingKey string,
-	outputMode stream.OutputMode,
+	outputMode streamcmd.OutputMode,
 	streamKey string,
 ) {
 	defer rm.wg.Done()
@@ -195,7 +195,7 @@ func (rm *RestreamManager) runOnce(
 	outputDir string,
 	streamRootDir string,
 	trackingKey string,
-	outputMode stream.OutputMode,
+	outputMode streamcmd.OutputMode,
 ) error {
 	if err := os.MkdirAll(outputDir, 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %v", outputDir, err)
@@ -204,8 +204,8 @@ func (rm *RestreamManager) runOnce(
 	multiQuality := len(ch.Qualities) > 0
 
 	// Generate master.m3u8 wrapper for HLS-only passthrough streams
-	if outputMode == stream.OutputModeHLS && !multiQuality {
-		if err := stream.GenerateMasterPlaylistWrapper(streamRootDir); err != nil {
+	if outputMode == streamcmd.OutputModeHLS && !multiQuality {
+		if err := streamcmd.GenerateMasterPlaylistWrapper(streamRootDir); err != nil {
 			return fmt.Errorf("failed to generate master playlist wrapper: %v", err)
 		}
 	}
@@ -213,7 +213,7 @@ func (rm *RestreamManager) runOnce(
 	ctx, cancel := context.WithCancel(rm.ctx)
 	defer cancel()
 
-	cmd := stream.CreateFFmpegCommand(ctx, ch.SourceURL, outputDir, &ch, outputMode)
+	cmd := streamcmd.CreateFFmpegCommand(ctx, ch.SourceURL, outputDir, &ch, outputMode)
 
 	startedAt := time.Now()
 
@@ -237,7 +237,7 @@ func (rm *RestreamManager) handleShutdown(
 	resolvedRecordPath string,
 	trackingKey string,
 	streamKey string,
-	outputMode stream.OutputMode,
+	outputMode streamcmd.OutputMode,
 ) {
 	// Unregister viewer/view tracking
 	if rm.viewerTracker != nil && trackingKey != "" {

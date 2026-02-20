@@ -466,6 +466,219 @@ func TestViewerTracker_UnregisterStream(t *testing.T) {
 	})
 }
 
+func TestViewerTracker_TrackSegmentRequest_ZeroWindow_Views(t *testing.T) {
+	vt := newTestTracker()
+	viewersCfg := models.Viewers{Enabled: false, Window: 0}
+	viewsCfg := models.Views{Enabled: true, Window: 0}
+
+	// With window=0, view should count immediately on first request
+	vt.TrackSegmentRequest("live/alice", "1.1.1.1", viewersCfg, viewsCfg)
+
+	views := vt.GetViewCount("live/alice")
+	if views != 1 {
+		t.Errorf("expected 1 view with zero window, got %d", views)
+	}
+}
+
+func TestViewerTracker_TrackSegmentRequest_ZeroWindow_ViewsMultipleIPs(t *testing.T) {
+	vt := newTestTracker()
+	viewersCfg := models.Viewers{Enabled: false, Window: 0}
+	viewsCfg := models.Views{Enabled: true, Window: 0}
+
+	vt.TrackSegmentRequest("live/alice", "1.1.1.1", viewersCfg, viewsCfg)
+	vt.TrackSegmentRequest("live/alice", "2.2.2.2", viewersCfg, viewsCfg)
+	vt.TrackSegmentRequest("live/alice", "3.3.3.3", viewersCfg, viewsCfg)
+
+	views := vt.GetViewCount("live/alice")
+	if views != 3 {
+		t.Errorf("expected 3 views with zero window, got %d", views)
+	}
+}
+
+func TestViewerTracker_TrackSegmentRequest_MultipleIPs(t *testing.T) {
+	vt := newTestTracker()
+	window := 1 * time.Second
+
+	// Pre-create stream with sessions that started long enough ago
+	st := &streamTracking{
+		viewersEnabled: true,
+		viewerWindow:   window,
+		activeViewers: map[string]*viewerSession{
+			"1.1.1.1": makeActiveViewer(window),
+			"2.2.2.2": makeActiveViewer(window),
+			"3.3.3.3": makeActiveViewer(window),
+		},
+		viewsEnabled: true,
+		viewWindow:   window,
+		viewSessions: map[string]*viewSession{},
+		totalViews:   0,
+	}
+	vt.mu.Lock()
+	vt.streams["live/alice"] = st
+	vt.mu.Unlock()
+
+	count := vt.GetViewerCount("live/alice")
+	if count != 3 {
+		t.Errorf("expected 3 viewers, got %d", count)
+	}
+}
+
+func TestViewerTracker_TrackSegmentRequest_ViewersDisabledViewsEnabled(t *testing.T) {
+	vt := newTestTracker()
+	viewersCfg := models.Viewers{Enabled: false, Window: 0}
+	viewsCfg := models.Views{Enabled: true, Window: 0}
+
+	vt.TrackSegmentRequest("live/alice", "1.1.1.1", viewersCfg, viewsCfg)
+
+	// Viewers disabled: should be 0
+	count := vt.GetViewerCount("live/alice")
+	if count != 0 {
+		t.Errorf("expected 0 viewers (disabled), got %d", count)
+	}
+
+	// Views enabled with window=0: should count immediately
+	views := vt.GetViewCount("live/alice")
+	if views != 1 {
+		t.Errorf("expected 1 view, got %d", views)
+	}
+}
+
+func TestViewerTracker_TrackSegmentRequest_ViewersEnabledViewsDisabled(t *testing.T) {
+	vt := newTestTracker()
+	window := 1 * time.Second
+
+	// Pre-create a stream with an active viewer that has passed the window threshold
+	st := &streamTracking{
+		viewersEnabled: true,
+		viewerWindow:   window,
+		activeViewers: map[string]*viewerSession{
+			"1.1.1.1": makeActiveViewer(window),
+		},
+		viewsEnabled: false,
+		viewWindow:   window,
+		viewSessions: map[string]*viewSession{},
+		totalViews:   0,
+	}
+	vt.mu.Lock()
+	vt.streams["live/alice"] = st
+	vt.mu.Unlock()
+
+	count := vt.GetViewerCount("live/alice")
+	if count != 1 {
+		t.Errorf("expected 1 viewer, got %d", count)
+	}
+
+	views := vt.GetViewCount("live/alice")
+	if views != 0 {
+		t.Errorf("expected 0 views (disabled), got %d", views)
+	}
+}
+
+// mockStorageWithViewCount allows configuring ReadFile to return a view count.
+type mockStorageWithViewCount struct {
+	readData    []byte
+	readErr     error
+	writtenData []byte
+	writtenPath string
+}
+
+func (m *mockStorageWithViewCount) ReadFile(path string) ([]byte, error) {
+	return m.readData, m.readErr
+}
+func (m *mockStorageWithViewCount) WriteFile(path string, data []byte) error {
+	m.writtenPath = path
+	m.writtenData = make([]byte, len(data))
+	copy(m.writtenData, data)
+	return nil
+}
+func (m *mockStorageWithViewCount) DeleteFile(path string) error             { return nil }
+func (m *mockStorageWithViewCount) ListFiles(pattern string) ([]string, error) { return nil, nil }
+func (m *mockStorageWithViewCount) GetFileSize(path string) (int64, error) { return 0, nil }
+func (m *mockStorageWithViewCount) SearchFiles(pattern string, extensions []string) ([]string, []map[string]string, error) {
+	return nil, nil, nil
+}
+
+func TestViewerTracker_LoadViewCount_SeedsFromDisk(t *testing.T) {
+	storage := &mockStorageWithViewCount{readData: []byte("42")}
+	vt := &ViewerTracker{
+		streams: make(map[string]*streamTracking),
+		storage: storage,
+	}
+
+	// Tracking a request creates the stream, which calls loadViewCount
+	viewersCfg := models.Viewers{Enabled: false, Window: 0}
+	viewsCfg := models.Views{Enabled: true, Window: 5}
+
+	vt.TrackSegmentRequest("live/alice", "1.1.1.1", viewersCfg, viewsCfg)
+
+	// totalViews should be seeded from the disk value (42)
+	views := vt.GetViewCount("live/alice")
+	if views != 42 {
+		t.Errorf("expected 42 views seeded from disk, got %d", views)
+	}
+}
+
+func TestViewerTracker_LoadViewCount_InvalidData(t *testing.T) {
+	storage := &mockStorageWithViewCount{readData: []byte("not-a-number")}
+	vt := &ViewerTracker{
+		streams: make(map[string]*streamTracking),
+		storage: storage,
+	}
+
+	viewersCfg := models.Viewers{Enabled: false, Window: 0}
+	viewsCfg := models.Views{Enabled: true, Window: 5}
+
+	vt.TrackSegmentRequest("live/alice", "1.1.1.1", viewersCfg, viewsCfg)
+
+	views := vt.GetViewCount("live/alice")
+	if views != 0 {
+		t.Errorf("expected 0 views for invalid disk data, got %d", views)
+	}
+}
+
+func TestViewerTracker_UnregisterStream_PersistsViewCount(t *testing.T) {
+	storage := &mockStorageWithViewCount{}
+	vt := &ViewerTracker{
+		streams: make(map[string]*streamTracking),
+		storage: storage,
+	}
+
+	// Set up stream with views enabled and a known total
+	st := &streamTracking{
+		viewersEnabled: false,
+		viewerWindow:   0,
+		activeViewers:  map[string]*viewerSession{},
+		viewsEnabled:   true,
+		viewWindow:     5 * time.Second,
+		viewSessions:   map[string]*viewSession{},
+		totalViews:     15,
+	}
+	vt.mu.Lock()
+	vt.streams["live/alice"] = st
+	vt.mu.Unlock()
+
+	vt.UnregisterStream("live/alice")
+
+	// Verify that the view count was written to storage
+	if string(storage.writtenData) != "15" {
+		t.Errorf("expected written view count '15', got %q", string(storage.writtenData))
+	}
+}
+
+func TestViewerTracker_GetViewCount_FallbackToDisk(t *testing.T) {
+	storage := &mockStorageWithViewCount{readData: []byte("99")}
+	vt := &ViewerTracker{
+		streams: make(map[string]*streamTracking),
+		storage: storage,
+	}
+
+	// Stream not in memory — should fall back to disk
+	views := vt.GetViewCount("live/unknown")
+	if views != 99 {
+		t.Errorf("expected 99 views from disk fallback, got %d", views)
+	}
+}
+
 func TestGetClientIP(t *testing.T) {
 	tests := []struct {
 		name       string

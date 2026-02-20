@@ -12,6 +12,7 @@ import (
 	"Theatrum/adapters/driven/metrics"
 	"Theatrum/domain/models"
 	"Theatrum/domain/services"
+	"Theatrum/shared/streamcmd"
 )
 
 // Manager manages multiple active streams
@@ -63,26 +64,26 @@ func (sm *Manager) createNewStream(inputPath string, outputDir string, streamCon
 	}
 
 	multiQuality := len(streamConfig.Qualities) > 0
-	outputMode := DetermineOutputMode(streamConfig.Distribution)
+	outputMode := streamcmd.DetermineOutputMode(streamConfig.Distribution)
 
 	// For HLS-only passthrough, outputDir is {path}/default; streamRootDir is {path} (parent).
 	// For all other modes (HLS multi-quality, DASH, Dual), outputDir == streamRootDir.
 	var streamRootDir string
-	if outputMode == OutputModeHLS && !multiQuality {
+	if outputMode == streamcmd.OutputModeHLS && !multiQuality {
 		streamRootDir = filepath.Dir(outputDir)
 	} else {
 		streamRootDir = outputDir
 	}
 
 	// Generate master.m3u8 wrapper for HLS-only passthrough streams
-	if outputMode == OutputModeHLS && !multiQuality {
-		if err := GenerateMasterPlaylistWrapper(streamRootDir); err != nil {
+	if outputMode == streamcmd.OutputModeHLS && !multiQuality {
+		if err := streamcmd.GenerateMasterPlaylistWrapper(streamRootDir); err != nil {
 			return nil, fmt.Errorf("failed to generate master playlist wrapper: %v", err)
 		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	cmd := CreateFFmpegCommand(ctx, "", outputDir, streamConfig, outputMode)
+	cmd := streamcmd.CreateFFmpegCommand(ctx, "", outputDir, streamConfig, outputMode)
 
 	stdin, err := cmd.StdinPipe()
 	if err != nil {

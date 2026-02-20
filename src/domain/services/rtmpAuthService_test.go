@@ -131,6 +131,43 @@ func TestRtmpAuthService_ValidateAuthentication(t *testing.T) {
 	}
 }
 
+func TestRtmpAuthService_ValidateAuthentication_MultiVariable(t *testing.T) {
+	channels := map[string]models.Stream{}
+	svc := newTestRtmpAuthService(channels)
+
+	stream := &models.Stream{
+		LiveStreamKey:     "secretkey",
+		AuthTokenTemplate: "{room_id}{username}",
+	}
+
+	// XOR input is "42alice" (room_id + username concatenated)
+	expectedToken := svc.xorString("secretkey", "42alice")
+
+	t.Run("valid multi-variable token", func(t *testing.T) {
+		vars := map[string]string{"room_id": "42", "username": "alice"}
+		err := svc.ValidateAuthentication(stream, vars, expectedToken)
+		if err != nil {
+			t.Errorf("expected valid authentication, got error: %v", err)
+		}
+	})
+
+	t.Run("wrong variable values", func(t *testing.T) {
+		vars := map[string]string{"room_id": "99", "username": "alice"}
+		err := svc.ValidateAuthentication(stream, vars, expectedToken)
+		if err == nil {
+			t.Error("expected error for wrong variable values")
+		}
+	})
+
+	t.Run("partial variables missing", func(t *testing.T) {
+		vars := map[string]string{"username": "alice"}
+		err := svc.ValidateAuthentication(stream, vars, expectedToken)
+		if err == nil {
+			t.Error("expected error when room_id is missing")
+		}
+	})
+}
+
 func TestRtmpAuthService_BuildStreamPath(t *testing.T) {
 	channels := map[string]models.Stream{}
 	svc := newTestRtmpAuthService(channels)

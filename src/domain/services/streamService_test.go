@@ -99,6 +99,20 @@ func TestStreamService_GetStreamStoragePath(t *testing.T) {
 			"videos/alice",
 			false,
 		},
+		{
+			"thumbnail.png resource excludes quality dir",
+			&models.Stream{Path: "videos/{username}", Distribution: hlsDist},
+			map[string]string{"username": "alice", "resource": constants.ThumbnailFile},
+			"videos/alice",
+			false,
+		},
+		{
+			"regular segment includes quality dir",
+			&models.Stream{Path: "videos/{username}", Distribution: hlsDist},
+			map[string]string{"username": "alice", "resource": "segment_000.ts"},
+			"videos/alice/default",
+			false,
+		},
 	}
 
 	for _, tt := range tests {
