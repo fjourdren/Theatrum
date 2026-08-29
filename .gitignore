@@ -1,55 +1,22 @@
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
-bin/
-dist/
+target/
 
-# Test binary, built with `go test -c`
-*.test
-
-# Output of the go coverage tool, specifically when used with LiteIDE
-*.out
-
-# IDE specific files
+# IDE
 .idea/
 .vscode/
 *.swp
-*.swo
 *~
 
-# OS specific files
+# OS
 .DS_Store
-Thumbs.db
 
-# Application specific
+# Application data (streams, segments, recordings)
 data/
-*.ts
-*.m3u8
-*.mp4
-*.mpd
-*.m4s
+raw_videos/
 
-# Log files
-*.log
-
-# Environment files
-.env
-.env.local
-.env.*.local
-
-# Build output
-build/
-main
-theatrum
-
-# Config files
+# Config holds live_stream_key secrets — copy config.yml.example instead
 config.yml
 
-# Temp test files
-/cmd/
+*.log
 
 # AI
 .claude/settings.local.json

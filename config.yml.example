@@ -1,19 +1,41 @@
+# ════════════════════════════════════════════════════════════════════════
+# Theatrum — quick-test configuration
+#
+# Three channels, one for each way content gets in. Copy to config.yml,
+# run, and every URL below works with no further setup.
+#
+#   java -jar target/theatrum-2.0.jar --config config.yml.example
+#
+#   1. /vod/{video_id}    transcode — drop an .mp4 in data/raw_videos/{id}/
+#                         and Theatrum encodes it to a 3-quality HLS ladder
+#   2. /watch/{video_id}  pre-transcoded — segments an external pipeline
+#                         already produced, served as-is
+#   3. /live/{username}   RTMP ingest that records — live while publishing,
+#                         then the same URL serves the full VOD
+#
+# Browser player:  http://localhost:8090/          (frontend/index.html)
+# Channel index:   http://localhost:8090/all_streams.m3u8
+#
+# The field-by-field reference is docs/configuration.md; examples/ holds
+# five configurations shaped after real platforms.
+# ════════════════════════════════════════════════════════════════════════
+
 application:
-  public_path: "http://localhost:8080"
+  public_path: "http://localhost:8090"   # What the aggregated playlist advertises
   all_streams_playlist:
     enabled: true
     path: "all_streams.m3u8"
 
-# Server's ports
+# Server ports
 server:
-  http: 8080 # Also used by HLS
+  http: 8090               # Also serves HLS/DASH and the frontend
   rtmp: 1935
   rtmp_config:
-    reconnect_delay: 30  # Seconds to wait before cleaning up disconnected stream
-    cleanup_delay: 30    # Seconds to wait before removing stream files
+    reconnect_delay: 10    # Short delays keep the test loop fast
+    cleanup_delay: 10
 
 # ────────────────
-# Quality profiles
+# Quality profiles — the ladder every transcoding channel below reuses
 quality_profiles: &QUALITY_PROFILES
   low: &LOW
     width: 640
@@ -46,194 +68,88 @@ quality_profiles: &QUALITY_PROFILES
       codec: "aac"
 
 # ────────────────
-# Stream templates
-stream_templates:
-  default:  # When there is not quality, then the default directory is used in the storage path
-    stream: &default_stream_config
-      type: video_encoded
-      path: "livestreams/{username}"
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 6
-  multiquality:
-    stream: &multiquality_stream_config
-      type: video_encoded
-      path: "livestreams/{username}"
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 6
-  video:
-    stream: &video_unencoded_config
-      type: video_unencoded
-      video_input_path: "raw_videos/{username}"
-      path: "records/{username}"
-      delete_after_encoding: false
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 6
-  # Live stream with multi-quality transcoding (requires CPU for real-time encoding)
-  live:
-    stream: &live_stream_config
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"  # Secret key for XOR authentication
-      auth_token_template: "{username}"               # Template for XOR input (uses URL variables)
-      qualities:                                       # Optional: omit for passthrough (codec copy)
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 2  # Lower for live streaming
-          window_size: 5       # Number of segments in the live playlist (default: 3)
-
-  # Live stream with passthrough (no transcoding, lowest latency)
-  live_passthrough:
-    stream: &live_passthrough_config
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      distribution:
-        hls:
-          segment_duration: 2
-          window_size: 3       # Number of segments in the live playlist (default: 3)
-      viewers:                   # Concurrent viewer count (live streams only)
-        enabled: true
-        window: 30               # Seconds of inactivity before a viewer is considered gone
-      views:                     # Total view count (all stream types)
-        enabled: true
-        window: 30               # Seconds of inactivity before a new visit counts as a new view (0 = instant)
-      thumbnail:                 # Periodic PNG thumbnail generation (live streams only)
-        enabled: true
-        interval: 5              # Generate a PNG thumbnail every 5 seconds
-
-  # Live stream with recording enabled
-  live_recorded:
-    stream: &live_recorded_config
-      type: live
-      path: "live/{username}/{%STARTING_DATE%}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      distribution:
-        hls:
-          segment_duration: 2
-          window_size: 5
-      record:
-        enabled: true
-        path: "recordings/{username}/{%STARTING_DATE%}"  # Same placeholders as stream path
-
-  # DASH-only live stream (MPEG-DASH without HLS)
-  live_dash:
-    stream: &live_dash_config
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      distribution:
-        dash:
-          segment_duration: 2
-          window_size: 5
-
-  # Dual-mode live stream (both HLS and DASH from a single FFmpeg process)
-  # Both formats share fMP4/CMAF segments (.m4s). HLS uses fMP4 instead of .ts.
-  live_dual:
-    stream: &live_dual_config
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 2
-          window_size: 5
-        dash:
-          segment_duration: 2  # Must match HLS segment_duration in dual mode
-          window_size: 5
-
-  # VOD encoding with DASH output
-  video_dash:
-    stream: &video_dash_config
-      type: video_unencoded
-      video_input_path: "raw_videos/{username}"
-      path: "records/{username}"
-      delete_after_encoding: false
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        dash:
-          segment_duration: 6
-
-# ────────────────
-# All streams endpoints
+# Channels
 channels:
-  "/user/{username}":
+
+  # ── 1. VOD, transcoded by Theatrum ────────────────────────────────────
+  # Scans data/raw_videos/{video_id}/ at boot and encodes what it finds
+  # into data/encoded/{video_id}/. Detection runs at startup only, so add
+  # files before launching, not while running.
+  #
+  #   mkdir -p data/raw_videos/demo
+  #   cp src/test/resources/testdata/test.mp4 data/raw_videos/demo/
+  #   # restart, wait for "Encoding completed", then:
+  #   vlc http://localhost:8090/vod/demo/master.m3u8
+  "/vod/{video_id}":
     stream:
-      <<: *default_stream_config
-  "/premium/{username}":
+      type: video_unencoded
+      video_input_path: "raw_videos/{video_id}"
+      path: "encoded/{video_id}"
+      delete_after_encoding: false   # Keep the source so the test is repeatable
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6        # Longer than live: nobody is waiting
+      views:
+        enabled: true
+        window: 10
+
+  # ── 2. VOD, already transcoded elsewhere ──────────────────────────────
+  # Theatrum only serves what is on disk — no FFmpeg involved. Point it at
+  # a directory that already holds a master playlist and its segments.
+  #
+  #   vlc http://localhost:8090/watch/demo/master.m3u8
+  "/watch/{video_id}":
     stream:
-      <<: *multiquality_stream_config
-  "/video/{username}":
-    stream:
-      <<: *video_unencoded_config
+      type: video_encoded
+      path: "library/{video_id}"
+      qualities:                     # Must name the directories that exist on disk
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 6        # Must match how the segments were cut
+      views:
+        enabled: true
+        window: 10
+
+  # ── 3. Live RTMP that becomes a VOD ───────────────────────────────────
+  # `record.enabled` with no `record.path` means the recording is finalised
+  # in place: while you publish the URL serves a rolling live window, and
+  # once you stop it serves the whole broadcast from the same URL.
+  #
+  # The stream key is XOR(username, live_stream_key) in lowercase hex — for
+  # username `alice` and the key below that is 15091a170e (docs/ingest.md):
+  #
+  #   ffmpeg -re -i data/raw_videos/demo/input.mp4 -c copy -f flv \
+  #     rtmp://localhost:1935/live/alice/15091a170e
+  #   vlc http://localhost:8090/live/alice/master.m3u8
   "/live/{username}":
     stream:
-      <<: *live_stream_config
-
-  # Restream: pull from external RTMP URL (passthrough, no transcoding)
-  "/restream/mystream":
-    stream:
-      type: restream
-      source_url: "rtmp://external-server/live/stream_key"
-      path: "restream/mystream"
+      type: live
+      path: "live/{username}"
+      live_stream_key: "testkey"     # CHANGE THIS — anyone holding it can publish
+      auth_token_template: "{username}"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
       distribution:
         hls:
-          segment_duration: 2
+          segment_duration: 2        # Short segments: lower latency
           window_size: 5
-
-  # Restream with multi-quality transcoding
-  # "/restream/premium":
-  #   stream:
-  #     type: restream
-  #     source_url: "rtmp://external-server/live/stream_key"
-  #     path: "restream/premium"
-  #     qualities:
-  #       low: *LOW
-  #       medium: *MEDIUM
-  #       high: *HIGH
-  #     distribution:
-  #       hls:
-  #         segment_duration: 2
-  #         window_size: 5
-
-  # Restream with recording
-  # "/restream/recorded":
-  #   stream:
-  #     type: restream
-  #     source_url: "rtmp://external-server/live/stream_key"
-  #     path: "restream/recorded/{%STARTING_DATE%}"
-  #     distribution:
-  #       hls:
-  #         segment_duration: 2
-  #         window_size: 5
-  #     record:
-  #       enabled: true
-  #       path: "recordings/restream/{%STARTING_DATE%}"
+      record:
+        enabled: true                # No path = finalise in place, same URL
+      viewers:
+        enabled: true
+        window: 10                   # Counts only after 10s of continuous watching
+      views:
+        enabled: true
+        window: 10
+      thumbnail:
+        enabled: true
+        interval: 5                  # http://localhost:8090/live/alice/thumbnail.png

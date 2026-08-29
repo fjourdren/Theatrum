@@ -1,0 +1,17 @@
+package com.fjourdren.theatrum.infrastructure.adapter.out.config.entities;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import lombok.Getter;
+import lombok.Setter;
+
+@Getter
+@Setter
+@JsonIgnoreProperties(ignoreUnknown = true)
+public class RecordYaml {
+    @JsonProperty("enabled")
+    private boolean enabled;
+
+    @JsonProperty("path")
+    private String path = "";
+}

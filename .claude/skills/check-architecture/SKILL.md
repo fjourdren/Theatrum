@@ -6,184 +6,56 @@ allowed-tools: Read, Grep, Glob, Bash
 
 # Hexagonal Architecture Checker
 
-You are an architecture auditor for Theatrum. Your job is to scan the codebase and report any violations of the hexagonal (ports & adapters) architecture rules. Use `$ARGUMENTS` to focus on a specific area (e.g., `/check-architecture domain` or `/check-architecture src/adapters/driver/rtmp/`).
+Audit Theatrum for violations of the hexagonal rules. `$ARGUMENTS` narrows the scope (e.g.
+`/check-architecture domain` or `/check-architecture infrastructure/adapter/in/rtmp/`).
 
-## Architecture Rules
+## Step 1: Read the rules
 
-### Rule 1: Domain Must Not Import Adapters
+`docs/architecture.md` is the source of truth — dependency rules, the documented exceptions
+(`BeanConfig`, the adapter lifecycle interfaces, `infrastructure/ffmpeg/`, Spring stereotypes
+and Lombok in the domain)
+and how they are enforced. Read it before reporting anything as drift.
 
-Files in `src/domain/` must ONLY import:
-- Standard library packages
-- `Theatrum/constants`
-- `Theatrum/domain/*` (own sub-packages)
-- Third-party libraries (e.g., `github.com/prometheus/client_golang`)
-
-**Forbidden imports from domain:**
-- `Theatrum/adapters/*` — any adapter import is a violation
-
-**Known exception (document but still flag):**
-- `src/domain/jobs/encodeJob.go` imports `Theatrum/adapters/driven/metrics` — this is a known pragmatic violation for instrumentation
-
-### Rule 2: Driven Adapters Must Not Import Driver Adapters
-
-Files in `src/adapters/driven/` must NOT import:
-- `Theatrum/adapters/driver/*`
-
-Driven adapters may import:
-- `Theatrum/domain/models`
-- `Theatrum/domain/repositories` (to implement ports)
-- `Theatrum/constants`
-- Their own internal sub-packages
-- Standard library and third-party packages
-
-### Rule 3: Driver Adapters Must Not Import Other Driver Adapters (Cross-Boundary)
-
-Files in one driver adapter (e.g., `src/adapters/driver/http/`) must NOT import another driver adapter (e.g., `src/adapters/driver/rtmp/`).
-
-**Exception:** Imports within the same driver adapter are fine (e.g., `rtmp/handlers/` importing `rtmp/management/`).
-
-### Rule 4: Port Interfaces Must Live in the Right Place
-
-- **Driven ports** (outbound): `src/domain/repositories/` — interfaces that driven adapters implement
-- **Driver ports** (inbound): `src/adapters/driver/ports/` — interfaces that driver adapters implement
-
-Check that no port interfaces are defined in adapter implementation files.
-
-### Rule 5: Adapters Must Implement Their Ports
-
-Verify that each driven adapter actually implements its port interface:
-- `fileAccess` → `StoragePort` (ReadFile, WriteFile, DeleteFile, ListFiles, GetFileSize, SearchFiles)
-- `ffmpegEncoder` → `EncoderPort` (EncodeVideo)
-- `yamlConfigFile` → `ConfigurationPort` (Load)
-
-Verify driver adapters implement their ports:
-- `httpServer` → `HttpPort` (StartHttpServer, Shutdown, BuildRouter)
-- `rtmpServer` → `RtmpPort` (StartRtmpServer, ShutdownRtmpServer, GetActiveStreams)
-
-### Rule 6: DI Container Is the Only Composition Root
-
-Only `src/cmd/main.go` should instantiate adapters and wire dependencies. No adapter should directly instantiate another adapter (use DI instead).
-
-### Rule 7: Models Stay Pure
-
-Files in `src/domain/models/` must not import adapter packages. They should only use:
-- Standard library
-- `Theatrum/constants`
-- Other model files
-
-## Audit Procedure
-
-Run these checks in order:
-
-### Check 1: Domain → Adapter Imports (CRITICAL)
-
-Search for adapter imports in domain code:
+## Step 2: Run ArchUnit
 
 ```bash
-cd src && grep -rn '"Theatrum/adapters' domain/
+mvn test -Dtest=ArchitectureTest
 ```
 
-Every match is a violation (except the known `jobs/encodeJob.go` → `metrics` exception).
+`src/test/java/com/fjourdren/theatrum/ArchitectureTest.java` encodes the dependency rules and
+the port naming/location rules. A failure names the offending class and the rule it broke — report it, do not weaken the
+rule to make it pass.
 
-### Check 2: Driven → Driver Imports (CRITICAL)
+## Step 3: The checks ArchUnit cannot do
 
-```bash
-cd src && grep -rn '"Theatrum/adapters/driver' adapters/driven/
-```
+- **Dead contract** — port methods no caller uses, and adapters exposing public methods callers
+  use *instead of* the port. `implements` guarantees the methods exist; this is the subtler read.
+  ```bash
+  grep -rn "implements .*Port\|implements .*UseCase" src/main/java/com/fjourdren/theatrum/
+  ```
+- **Missing use case** — a domain service a driving adapter needs but no `*UseCase` covers.
+  Compare `domain/service/` against the port table in `docs/architecture.md`.
+- **Compile** — `mvn -q compile`. ArchUnit reads bytecode, so it needs a successful build first.
 
-Every match is a violation.
-
-### Check 3: Cross-Driver Imports (MODERATE)
-
-```bash
-# HTTP importing RTMP
-cd src && grep -rn '"Theatrum/adapters/driver/rtmp' adapters/driver/http/
-
-# RTMP importing HTTP
-cd src && grep -rn '"Theatrum/adapters/driver/http' adapters/driver/rtmp/
-```
-
-Every match is a violation.
-
-### Check 4: Model Purity
-
-```bash
-cd src && grep -rn '"Theatrum/adapters' domain/models/
-```
-
-Every match is a violation.
-
-### Check 5: Port Interface Location
-
-Verify port interfaces exist where expected:
-
-```bash
-# Driven ports
-ls src/domain/repositories/*Port.go
-
-# Driver ports
-ls src/adapters/driver/ports/*.go
-```
-
-Search for stray interface definitions in adapter code:
-
-```bash
-cd src && grep -rn 'type.*Port interface' adapters/driven/ adapters/driver/http/ adapters/driver/rtmp/
-```
-
-Interfaces defined outside the expected locations may indicate architectural drift.
-
-### Check 6: Port Implementation Completeness
-
-For each port, verify the adapter implements all methods. Read the port interface and the adapter, then compare method signatures.
-
-### Check 7: Direct Adapter Instantiation Outside main.go
-
-```bash
-# Look for New* calls to adapter constructors outside main.go
-cd src && grep -rn 'NewFileAccess\|NewFfmpegEncoder\|NewYamlConfigFile\|NewHttpServer\|NewRtmpServer' --include='*.go' | grep -v 'cmd/main.go' | grep -v '_test.go'
-```
-
-Matches outside `main.go` and test files indicate DI bypass.
-
-### Check 8: Shared FFmpeg Args Usage
-
-`ffmpegargs` is a shared package at `src/shared/ffmpegargs/`. Check that it's only imported by the expected consumers:
-
-```bash
-cd src && grep -rn '"Theatrum/shared/ffmpegargs"'
-```
-
-Expected importers: `adapters/driven/ffmpegEncoder/repositories/` and `adapters/driver/rtmp/management/`.
-
-## Report Format
-
-After running all checks, produce a report:
+## Report format
 
 ```
 ## Architecture Audit Report
 
-### CRITICAL Violations
-- [file:line] Description of violation and which rule it breaks
+### CRITICAL   Jackson or MapStruct in the domain, application importing infrastructure,
+###            adapter on a concrete service — breaks the hexagon, must fix
+- [file:line] what and which rule
 
-### MODERATE Violations
-- [file:line] Description
+### MODERATE   cross-adapter imports, *Yaml leaking, domain services instantiated by hand
+- [file:line] what
 
-### KNOWN Exceptions (Documented)
-- [file:line] Why this exists and how to fix it strictly
+### LOW        port in an unexpected place, unused port method
 
-### Clean Areas
-- List packages that passed all checks
+### KNOWN      the documented exceptions — track only, by design
+
+### Clean areas
 
 ### Recommendations
-- Specific actionable steps to fix violations
 ```
 
-## Severity Levels
-
-| Severity | Description | Action |
-|----------|-------------|--------|
-| CRITICAL | Domain importing adapters, driven importing driver | Must fix — breaks hexagonal guarantees |
-| MODERATE | Cross-driver imports, cross-adapter utility sharing | Should fix — creates coupling between independent modules |
-| LOW | Port interface in unexpected location, missing method | Cosmetic — still functions correctly |
-| KNOWN | Documented pragmatic violation (metrics in jobs) | Track — fix if doing a strict refactor |
+Do not silently "fix" a documented exception. Report it as a decision and ask.

@@ -2,14 +2,19 @@
 
 ![](imgs/logo.png)
 
+A powerful and flexible streaming server that supports video on demand (VOD), live RTMP ingest and
+restreaming from external sources, with adaptive bitrate capabilities. Built to handle multiple
+quality profiles with HLS and MPEG-DASH protocols.
 
-A powerful and flexible streaming server that supports video on demand (VOD) and live RTMP streaming with adaptive bitrate capabilities. Built to handle multiple quality profiles with HLS and MPEG-DASH protocols.
+> **Java port.** This is the Java/Spring Boot implementation of Theatrum. Behaviour, config format
+> and the HTTP/RTMP surface are intentionally identical to the [Go original](https://github.com/fjourdren/theatrum);
+> only the internals differ. The RTMP protocol is implemented in-tree — no third-party library.
 
 ## Features
 
 - 📺 **Video on Demand**
   - Support for pre-encoded video streaming
-  - Automatic mp4 encoding
+  - Automatic mp4 encoding on startup
   - Optional source file deletion after encoding
 
 - 📡 **Live Streaming**
@@ -18,11 +23,17 @@ A powerful and flexible streaming server that supports video on demand (VOD) and
   - Multi-quality transcoding (adaptive bitrate for viewers)
   - XOR-based stream key authentication
   - Optional recording with VOD playlist generation
+  - Periodic thumbnail generation
+
+- 🔁 **Restreaming**
+  - Pull from any external URL FFmpeg can read (RTMP, HLS, …)
+  - Auto-started at boot, auto-reconnect with exponential backoff
+  - Recording, viewers and views work exactly as they do for live
 
 - 🎯 **Quality Profiles**
   - Multi-qualities management
   - Customizable audio and video bitrates
-  - Shared quality profiles between VOD and live
+  - Shared quality profiles between VOD, live and restream
 
 - 🔄 **Streaming Protocols**
   - HLS (HTTP Live Streaming)
@@ -31,7 +42,7 @@ A powerful and flexible streaming server that supports video on demand (VOD) and
 
 - 📊 **Monitoring**
   - Prometheus metrics endpoint (`/metrics`)
-  - HTTP, RTMP, live stream, and encoding metrics
+  - HTTP, RTMP, live stream, recording and encoding metrics
 
 - ⚙️ **Configuration**
   - Fully configurable through YAML
@@ -39,17 +50,82 @@ A powerful and flexible streaming server that supports video on demand (VOD) and
   - Flexible quality profiles
   - Adjustable storage paths
   - Domain name customization
-  - Global streams playlist m3u8
+  - Global streams playlist m3u8 + built-in browser player
+
+## Getting Started
+
+1. Clone the repository:
+```bash
+git clone <repository-url>   # not published yet
+cd theatrum_java
+```
+
+2. Configure your server:
+   - Copy `config.yml.example` to `config.yml` (it is gitignored — it holds `live_stream_key` secrets)
+   - Or start from a use-case-specific example in [`examples/`](examples/):
+     - [`youtube-like.yml`](examples/youtube-like.yml) — User-uploaded VOD platform
+     - [`netflix-like.yml`](examples/netflix-like.yml) — Premium pre-encoded VOD
+     - [`twitch-like.yml`](examples/twitch-like.yml) — Live streaming platform
+     - [`iptv-like.yml`](examples/iptv-like.yml) — Linear TV / IPTV distribution
+     - [`restream-like.yml`](examples/restream-like.yml) — Relay of upstream feeds
+   - Adjust the configuration according to your needs:
+     - Set up your quality profiles
+     - Configure storage paths
+     - Adjust stream templates
+     - Set up endpoints
+
+3. Build and run:
+```bash
+mvn -q package -DskipTests            # → target/theatrum-2.0.jar
+java -jar target/theatrum-2.0.jar --config config.yml
+
+# or, during development
+mvn spring-boot:run
+```
+
+`--config` (or `-c`) defaults to `config.yml` in the working directory. `--help` and `--version`
+are available.
+
+4. Open `http://localhost:8080/` — the bundled player lists every stream and plays the one you pick.
+
+## Requirements
+
+- Java >= 25 (Temurin)
+- Maven >= 3.9
+- FFmpeg >= 4.4.0 (external process, required at runtime and for `mvn verify`)
+- Storage space for video segments
+- Network bandwidth according to your quality profiles
+
+### FFmpeg Requirements
+- libx264 encoder
+- aac audio codec
+- HLS segmenter
+- DASH muxer (for DASH and dual-mode streams)
 
 ## Configuration
 
-The server is configured through `config.yml`. Here's a breakdown of the main configuration sections:
+The server is configured through `config.yml`. YAML anchors and aliases are supported. Here's a
+breakdown of the main configuration sections — the field-by-field reference lives in
+[docs/configuration.md](docs/configuration.md).
 
 ### Server Configuration
 ```yaml
+application:
+  public_path: "http://localhost:8080"  # What the aggregated playlist advertises
+  all_streams_playlist:
+    enabled: true
+    path: "all_streams.m3u8"
+
 server:
-  http: 8080  # HTTP port for HLS/DASH streaming
+  http: 8080   # HTTP port for HLS/DASH streaming, metrics and the frontend
+  rtmp: 1935   # RTMP ingest port
+  rtmp_config:
+    reconnect_delay: 30  # Seconds to wait before cleaning up a disconnected stream
+    cleanup_delay: 30    # Seconds to wait before removing stream files
 ```
+
+> `server.port` must **not** be set in `application.properties` — the HTTP port comes from
+> `config.yml`, which is parsed before Spring starts.
 
 ### Quality Profiles
 Quality profiles are fully customizable. Here's an example configuration:
@@ -103,6 +179,8 @@ stream_templates:
         hls:
           segment_duration: 6
 ```
+
+Detection runs at **startup only** — drop the source files in before launching, not while running.
 
 #### unencoded_video (DASH)
 ```yaml
@@ -199,6 +277,27 @@ stream_templates:
           window_size: 5
 ```
 
+#### restream
+Pulls from an external URL instead of waiting for an RTMP push. Everything downstream — qualities,
+distribution, recording, viewers, views — behaves exactly as it does for `live`.
+
+```yaml
+channels:
+  "/restream/mystream":       # Literal path: no {var} allowed on restream channels
+    stream:
+      type: restream
+      source_url: "rtmp://external-server/live/stream_key"
+      path: "restream/mystream"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+```
+
+Restreams are started for every restream channel at boot and reconnect on failure with exponential
+backoff (1s → 30s max, reset after 30s of success). They take no `live_stream_key` /
+`auth_token_template` — there is no client to authenticate.
+
 **Output directory structure:**
 ```
 # HLS-only passthrough (no qualities)
@@ -233,7 +332,7 @@ For live streams, authentication is required using configurable XOR-based tokens
 
 1. Server extracts variables from the RTMP URL based on the channel pattern
 2. Server builds the XOR input by replacing `{var}` placeholders in `auth_token_template` with URL values
-3. Server XORs the input with `live_stream_key` and hex-encodes the result
+3. Server XORs the input with `live_stream_key` and hex-encodes the result (lowercase)
 4. Client must provide this token as the stream key
 5. Streaming is allowed only if the tokens match
 
@@ -261,7 +360,20 @@ channels:
 - RTMP URL: `rtmp://server/room/42/user/alice`
 - Stream key: `hex(XOR("42alice", "secret"))`
 
+Computing a token by hand:
+```bash
+python3 -c "
+key=b'secret'; inp=bytearray(b'alice')
+for i in range(len(inp)): inp[i] ^= key[i % len(key)]
+print(inp.hex())
+"
+```
+
 > **Note:** All variables in `auth_token_template` must exist in the channel pattern, otherwise configuration validation will fail at startup.
+>
+> XOR is obfuscation, not encryption: anyone holding the key can mint tokens, and there is no
+> replay protection. Adequate against accidental publishing, not against an attacker. See
+> [docs/ingest.md](docs/ingest.md).
 
 ### Source File Management (video_unencoded only)
 For `video_unencoded` streams, you can configure automatic deletion of source files after successful encoding:
@@ -335,9 +447,23 @@ channels:
         window: 30          # Minimum watch time in seconds (default: 30)
 ```
 
-When disabled (default), requesting `viewers.txt` or `views.txt` returns 404. Client IP is extracted from the `X-Forwarded-For` header (for reverse proxy setups) or `RemoteAddr`.
+When disabled (default), requesting `viewers.txt` or `views.txt` returns 404. Client IP is extracted from the `X-Forwarded-For` header (for reverse proxy setups) or the socket address.
 
 View counts are persisted to disk and survive server restarts. When recording is enabled, `views.txt` is preserved alongside the recording. When recording is disabled, all files (including `views.txt`) are deleted on stream end.
+
+### Thumbnails (live streams only)
+
+A second FFmpeg process grabs one frame from the latest segment every `interval` seconds and writes
+it atomically to `thumbnail.png` at the stream's base URL.
+
+```yaml
+      thumbnail:
+        enabled: true
+        interval: 5   # Seconds between captures
+```
+
+When disabled (default), `thumbnail.png` returns 404. Enabling it on a non-live stream type is
+rejected at startup. The thumbnail is moved with the rest of the files when recording.
 
 ### Channel Endpoints
 Channel endpoints can be configured with a templating system.
@@ -371,201 +497,9 @@ channels:
       # Resolves to: livestreams/alice/2026-02-07_15-30-00
 ```
 
-Built-in functions can be mixed freely with user variables in any path template.
-
-## Monitoring
-
-Theatrum exposes Prometheus metrics at `GET /metrics` on the HTTP port. All custom metrics are prefixed with `theatrum_`. Go runtime metrics are also included.
-
-### Metrics Reference
-
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `theatrum_http_requests_total` | Counter | `status_code`, `stream_type`, `file_type` | Total HTTP requests served |
-| `theatrum_http_request_duration_seconds` | Histogram | `stream_type`, `file_type` | HTTP request duration |
-| `theatrum_http_response_bytes_total` | Counter | `stream_type`, `file_type` | Total bytes sent in HTTP responses |
-| `theatrum_http_requests_in_flight` | Gauge | — | HTTP requests currently being served |
-| `theatrum_rtmp_connections_total` | Counter | — | Total RTMP connections |
-| `theatrum_rtmp_connections_active` | Gauge | — | Currently active RTMP connections |
-| `theatrum_rtmp_auth_total` | Counter | `result` | RTMP authentication attempts (success/failure) |
-| `theatrum_rtmp_received_bytes_total` | Counter | `channel`, `type`, `stream_path` | Bytes received from RTMP streams |
-| `theatrum_rtmp_received_frames_total` | Counter | `channel`, `type`, `stream_path` | Frames received from RTMP streams |
-| `theatrum_live_streams_active` | Gauge | — | Currently active live streams |
-| `theatrum_stream_duration_seconds` | Histogram | `stream_path` | Duration of live streams |
-| `theatrum_ffmpeg_exits_total` | Counter | `status`, `stream_path` | FFmpeg process exits (clean/error/killed) |
-| `theatrum_recordings_total` | Counter | `mode`, `status`, `stream_path` | Recording operations (move/in_place, success/failure) |
-| `theatrum_encode_queue_depth` | Gauge | — | Jobs in the encode queue |
-| `theatrum_encode_jobs_total` | Counter | `status` | Encode jobs processed (success/failure) |
-| `theatrum_encode_job_duration_seconds` | Histogram | — | Duration of encode jobs |
-| `theatrum_stream_viewers` | Gauge | `stream_path` | Concurrent viewers per stream |
-| `theatrum_stream_views` | Gauge | `stream_path` | Total accumulated views per stream |
-| `theatrum_channels_configured` | Gauge | `type` | Configured channels by stream type |
-
-### Prometheus Scrape Config
-
-```yaml
-scrape_configs:
-  - job_name: "theatrum"
-    static_configs:
-      - targets: ["localhost:8080"]
-```
-
-## Getting Started
-
-1. Clone the repository:
-```bash
-git clone https://github.com/fjourdren/theatrum.git
-cd theatrum
-```
-
-2. Configure your server:
-   - Copy `config.yml.example` to `config.yml`
-   - Or start from a use-case-specific example in [`examples/`](examples/):
-     - [`youtube-like.yml`](examples/youtube-like.yml) — User-uploaded VOD platform
-     - [`netflix-like.yml`](examples/netflix-like.yml) — Premium pre-encoded VOD
-     - [`twitch-like.yml`](examples/twitch-like.yml) — Live streaming platform
-     - [`iptv-like.yml`](examples/iptv-like.yml) — Linear TV / IPTV distribution
-   - Adjust the configuration according to your needs:
-     - Set up your quality profiles
-     - Configure storage paths
-     - Adjust stream templates
-     - Set up endpoints
-
-3. Run with golang:
-```bash
-go run ./src/cmd/main.go
-```
-
-## Requirements
-
-- Go >= 1.24
-- FFmpeg >= 4.4.0
-- Storage space for video segments
-- Network bandwidth according to your quality profiles
-
-### FFmpeg Requirements
-- libx264 encoder
-- aac audio codec
-- HLS segmenter
-- DASH muxer (for DASH and dual-mode streams)
-
-## Installation
-
-### Using Docker (Recommended)
-
-1. Build the Docker image:
-```bash
-docker build -t theatrum .
-```
-
-2. Run the container:
-```bash
-docker run -d \
-  -p 8080:8080 \
-  -v /path/to/your/config.yml:/app/config.yml \
-  -v /path/to/your/storage:/app/storage \
-  theatrum
-```
-
-## Configuration Examples
-
-### Basic Quality Profile
-```yaml
-quality_profiles:
-  standard:
-    width: 1280
-    height: 720
-    framerate: 30
-    bitrate: "2500k"
-    codec: "libx264"
-    audio:
-      bitrate: "128k"
-      codec: "aac"
-```
-
-### Custom Stream Template
-```yaml
-stream_templates:
-  custom:
-    stream:
-      type: video_encoded
-      path: "custom/{username}"
-      qualities:
-        standard: *standard_profile
-      distribution:
-        hls:
-          segment_duration: 4
-```
-
-### Live Stream (Passthrough)
-```yaml
-stream_templates:
-  live_passthrough:
-    stream:
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      distribution:
-        hls:
-          segment_duration: 2
-```
-
-### Live Stream (Multi-Quality)
-```yaml
-stream_templates:
-  live_multiquality:
-    stream:
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 2
-          window_size: 5
-```
-
-### Live Stream (DASH-only)
-```yaml
-stream_templates:
-  live_dash:
-    stream:
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      distribution:
-        dash:
-          segment_duration: 2
-          window_size: 5
-```
-
-### Live Stream (Dual HLS + DASH)
-```yaml
-stream_templates:
-  live_dual:
-    stream:
-      type: live
-      path: "live/{username}"
-      live_stream_key: "your-secure-rtmp-secret-key"
-      auth_token_template: "{username}"
-      qualities:
-        low: *LOW
-        medium: *MEDIUM
-        high: *HIGH
-      distribution:
-        hls:
-          segment_duration: 2
-          window_size: 5
-        dash:
-          segment_duration: 2
-          window_size: 5
-```
+Built-in functions can be mixed freely with user variables in any path template. For a live stream,
+builtins are frozen for the whole session, so the RTMP and HTTP sides resolve them identically and
+they survive reconnects.
 
 ### Live Stream with Recording
 When recording is enabled, all segments are kept on disk during the stream (while only the last `window_size` segments appear in the live playlist). When the stream ends, a VOD playlist is generated.
@@ -611,13 +545,94 @@ stream_templates:
 - With recording + `record.path`: all segments accumulate on disk, a VOD playlist is generated, and files are moved to `record.path`.
 - With recording, no `record.path`: all segments accumulate on disk, a VOD playlist is generated in-place, and files stay in `stream.path`.
 
+## Global Playlist & Player
+
+- `GET /all_streams.m3u8` (path and toggle come from `application.all_streams_playlist`) lists every
+  configured stream, with absolute URLs built from `application.public_path`.
+- Any request matching no channel falls through to the frontend: `frontend/index.html`, served
+  relative to the working directory, lists what `all_streams.m3u8` advertises grouped by channel
+  prefix and plays the picked stream with hls.js, including a quality selector bound to the master
+  playlist's variants.
+
+## Monitoring
+
+Theatrum exposes Prometheus metrics at `GET /metrics` on the HTTP port. All metrics are prefixed
+with `theatrum_`; only Theatrum's own metrics are exported (no JVM binders are registered).
+
+### Metrics Reference
+
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `theatrum_http_requests_total` | Counter | `status_code`, `stream_type`, `file_type` | Total HTTP requests served |
+| `theatrum_http_request_duration_seconds` | Histogram | `stream_type`, `file_type` | HTTP request duration |
+| `theatrum_http_response_bytes_total` | Counter | `stream_type`, `file_type` | Total bytes sent in HTTP responses |
+| `theatrum_http_requests_in_flight` | Gauge | — | HTTP requests currently being served |
+| `theatrum_rtmp_connections_total` | Counter | — | Total RTMP connections |
+| `theatrum_rtmp_connections_active` | Gauge | — | Currently active RTMP connections |
+| `theatrum_rtmp_auth_total` | Counter | `result` | RTMP authentication attempts (success/failure) |
+| `theatrum_rtmp_received_bytes_total` | Counter | `channel`, `type`, `stream_path` | Bytes received from RTMP streams |
+| `theatrum_rtmp_received_frames_total` | Counter | `channel`, `type`, `stream_path` | Frames received from RTMP streams |
+| `theatrum_live_streams_active` | Gauge | — | Currently active live streams |
+| `theatrum_stream_duration_seconds` | Histogram | `stream_path` | Duration of live streams |
+| `theatrum_ffmpeg_exits_total` | Counter | `status`, `stream_path` | FFmpeg process exits (clean/error/killed) |
+| `theatrum_recordings_total` | Counter | `mode`, `status`, `stream_path` | Recording operations (move/in_place, success/failure) |
+| `theatrum_encode_queue_depth` | Gauge | — | Jobs in the encode queue |
+| `theatrum_encode_jobs_total` | Counter | `status` | Encode jobs processed (success/failure) |
+| `theatrum_encode_job_duration_seconds` | Histogram | — | Duration of encode jobs |
+| `theatrum_channels_configured` | Gauge | `type` | Configured channels by stream type |
+
+> **Difference from the Go version:** the per-stream `theatrum_stream_viewers` /
+> `theatrum_stream_views` gauges are not exported yet. Those counts are served over `viewers.txt` /
+> `views.txt` instead.
+
+### Prometheus Scrape Config
+
+```yaml
+scrape_configs:
+  - job_name: "theatrum"
+    static_configs:
+      - targets: ["localhost:8080"]
+```
+
+## Architecture
+
+Hexagonal (ports & adapters), three rings — `domain` → `application` → `infrastructure`, with the
+dependency rules enforced by ArchUnit in `mvn test`. Driving ports are `*UseCase`, driven ports are
+`*Port`. Full map in [docs/architecture.md](docs/architecture.md).
+
+Stack: Java 25 · Spring Boot 4.1 · Maven · Jackson (YAML) · MapStruct · Micrometer/Prometheus ·
+picocli · Lombok · JUnit 5 / AssertJ / Mockito · ArchUnit. RTMP is implemented in-tree; FFmpeg is
+an external process.
+
+## Development
+
+Every change is test-first — red, green, refactor. Conventions and the harness live in
+[docs/testing.md](docs/testing.md).
+
+```bash
+mvn test                      # unit tests (e2e excluded)
+mvn verify                    # + e2e (needs ffmpeg on PATH)
+mvn -q package -DskipTests    # → target/theatrum-2.0.jar
+mvn spring-boot:run
+```
+
+E2E tests **skip** rather than fail when FFmpeg is missing — a CI job without FFmpeg passes while
+testing nothing.
+
+| Doc | Covers |
+|-----|--------|
+| [docs/architecture.md](docs/architecture.md) | Hexagonal rings, ports, wiring, boot order, dependency rules |
+| [docs/ingest.md](docs/ingest.md) | RTMP protocol implementation, XOR auth, restream |
+| [docs/streaming.md](docs/streaming.md) | HLS/DASH/dual, FFmpeg commands, recording, path templates, viewers, thumbnails |
+| [docs/configuration.md](docs/configuration.md) | `config.yml` reference, validation rules, the `examples/` configs |
+| [docs/testing.md](docs/testing.md) | Test conventions, reference tests, manual pipeline run |
+| [docs/operations.md](docs/operations.md) | Metrics, build facts, CI/CD |
+
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## Third-Party Licenses
-
-- go-rtmp (https://github.com/yutopp/go-rtmp) — © 2018-2025 Yusuke Topp — Boost Software License 1.0 (BSL-1.0)
+This project is licensed under the GNU Affero General Public License v3.0, with commercial use
+limited to organizations generating under $100,000/year in revenue — see the [LICENSE](LICENSE)
+file for details.
 
 ## Contributing
 

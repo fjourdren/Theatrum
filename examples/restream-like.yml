@@ -1,0 +1,136 @@
+# ════════════════════════════════════════════════════════════════════════
+# Restream-like — Relay / mirror of external feeds
+#
+# This configuration pulls its content instead of receiving it. Nothing
+# publishes to the RTMP port: on boot Theatrum starts one FFmpeg process
+# per channel, each reading an upstream URL, and serves the resulting
+# segments to viewers.
+#
+# Use cases:
+#   - Mirroring a feed from another server or CDN edge
+#   - Re-packaging SRT / UDP / RTSP contribution feeds as HLS or DASH
+#   - Adding an adaptive bitrate ladder to a source that only offers one
+#   - Archiving a third-party stream you do not control
+#
+# How it works:
+#   - Every restream channel auto-starts at boot (TheatrumRunner)
+#   - FFmpeg reads source_url directly — any URL it can open works:
+#     rtmp://, rtsp://, srt://, udp://, http(s):// (HLS/DASH/progressive)
+#   - Dropped sources reconnect with exponential backoff (1s → 30s max)
+#   - Channel paths must be literal: there is no publisher to name them
+#     after, so {var} placeholders are rejected for this stream type
+#   - No live_stream_key / auth_token_template — nothing authenticates
+#     inbound, because nothing comes in
+#
+# Playing it (no publishing step — the feeds are already running):
+#   vlc http://localhost:8080/restream/mirror/default/playlist.m3u8
+# ════════════════════════════════════════════════════════════════════════
+
+application:
+  public_path: "http://localhost:8080"
+  all_streams_playlist:
+    enabled: true            # Index of every relayed feed
+    path: "all_streams.m3u8"
+
+# Server ports
+server:
+  http: 8080
+  rtmp: 1935               # Configured but unused — restreams pull, they do not receive
+  rtmp_config:
+    reconnect_delay: 30
+    cleanup_delay: 30
+
+# ────────────────
+# Quality profiles — only the transcoded channel below needs them
+quality_profiles: &QUALITY_PROFILES
+  low: &LOW
+    width: 640
+    height: 360
+    framerate: 24
+    bitrate: "800k"
+    codec: "libx264"
+    audio:
+      bitrate: "96k"
+      codec: "aac"
+
+  medium: &MEDIUM
+    width: 1280
+    height: 720
+    framerate: 30
+    bitrate: "2500k"
+    codec: "libx264"
+    audio:
+      bitrate: "128k"
+      codec: "aac"
+
+  high: &HIGH
+    width: 1920
+    height: 1080
+    framerate: 30
+    bitrate: "5000k"
+    codec: "libx264"
+    audio:
+      bitrate: "192k"
+      codec: "aac"
+
+# ────────────────
+# Stream templates — none. A restream path is a literal, so a template
+# could never be reused across channels; each one is written inline.
+
+# ────────────────
+# Channels
+channels:
+  # Straight mirror — passthrough, the cheapest relay there is.
+  # Omitting `qualities` selects codec copy: no CPU, source quality preserved.
+  "/restream/mirror":
+    stream:
+      type: restream
+      source_url: "rtmp://upstream.example.com/live/source_key"
+      path: "restream/mirror"
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+      viewers:
+        enabled: true
+        window: 30
+
+  # Transcoded relay — give a single-bitrate upstream an ABR ladder.
+  # Costs real CPU: one scale/encode pass per quality, in real time.
+  "/restream/premium":
+    stream:
+      type: restream
+      source_url: "srt://upstream.example.com:9000?streamid=premium"
+      path: "restream/premium"
+      qualities:
+        low: *LOW
+        medium: *MEDIUM
+        high: *HIGH
+      distribution:
+        hls:
+          segment_duration: 2
+          window_size: 5
+        dash:
+          segment_duration: 2   # Must match HLS segment_duration in dual mode
+          window_size: 5
+      viewers:
+        enabled: true
+        window: 30
+      views:
+        enabled: true
+        window: 30
+
+  # Archived relay — passthrough, kept after the source goes away.
+  # {%STARTING_DATE%} is a builtin, not a user variable, so it is allowed here.
+  "/restream/archive":
+    stream:
+      type: restream
+      source_url: "https://upstream.example.com/hls/channel.m3u8"
+      path: "restream/archive/{%STARTING_DATE%}"
+      distribution:
+        hls:
+          segment_duration: 4
+          window_size: 5
+      record:
+        enabled: true
+        path: "recordings/restream/archive/{%STARTING_DATE%}"

@@ -1,199 +1,49 @@
 ---
 name: write-tests
-description: Write Go unit and e2e tests following Theatrum's exact conventions
+description: Write JUnit 5 unit and E2E tests following Theatrum's exact conventions
 ---
 
-# Go Test Writing Specialist
+# Test Writing Specialist
 
-You write Go tests for Theatrum following the project's exact conventions. When invoked, write tests for the file or package specified in `$ARGUMENTS`. If no argument is given, ask what to test.
+Write tests for the behaviour named in `$ARGUMENTS`. If nothing is given, ask what to test.
 
-## Step 1: Read Existing Tests
+**Theatrum is TDD-only.** The normal case is a test for code that does not exist yet: write it,
+run it, watch it fail for the right reason, and stop — the failing test is the deliverable. Only
+write the production code if asked to in the same breath. Back-filling tests onto existing
+untested code is the exception, not the default; say so when that is what you are doing.
 
-Before writing any test, read these reference files to match the project's style:
+## Step 1: Read the conventions
 
-- `src/domain/services/pathTemplateService_test.go` — Table-driven tests, subtests, error cases (most comprehensive)
-- `src/domain/services/viewerTracker_test.go` — Mock storage, time-dependent behavior, helper constructors
-- `src/adapters/driven/metrics/viewerCollector_test.go` — Prometheus testutil usage
-- `src/adapters/driven/ffmpegEncoder/repositories/ffmpegEncoder_test.go` — DryRun mode testing
+`docs/testing.md` is mandatory reading — frameworks, file organisation, mock-vs-fake, `@Nested`
+and `@MethodSource` structure, the `Clock` seam, `@TempDir`, port signatures, record shapes,
+coverage priority, E2E specifics. Follow it exactly.
 
-Also read the file under test and any port interfaces it depends on.
+## Step 2: Read the reference tests
 
-## Step 2: Read the Target File
+The table in `docs/testing.md` § Reference tests names which one matches what you are writing.
+Read that one before writing.
 
-Read the file specified in `$ARGUMENTS` and understand:
-- All exported and unexported functions
-- Dependencies (injected via constructor)
-- Port interfaces used
-- Error paths and edge cases
+## Step 3: Pin down the subject
 
-## Conventions (MANDATORY)
+**Writing first (normal):** design the API from the call site — the test is the first consumer.
+Name the class, its constructor dependencies (always constructor-injected, ports not concretes)
+and the behaviour under test. Read the ports it will need so the fakes match real signatures.
 
-### Testing Framework
-- Standard `testing` package ONLY
-- **NO testify** (no `assert`, no `require`, no `suite`)
-- **NO gomock** or any mock generation library
-- **NO `testing/fstest`** or other non-standard test helpers
+**Back-filling (exception):** read the existing class — public API, constructor dependencies,
+which ports it uses, its error paths. With `@RequiredArgsConstructor` the constructor is not in
+the source; the parameters are the `private final` fields in declaration order.
 
-### File Organization
-- Test file: same directory, same package (NOT `_test` external package)
-- File name: `{originalFileName}_test.go`
-- Module path: `Theatrum` (e.g., `import "Theatrum/domain/models"`)
-
-### Test Structure
-- **Table-driven tests** with `t.Run(tt.name, ...)`:
-```go
-func TestFunctionName_Behavior(t *testing.T) {
-    tests := []struct {
-        name     string
-        input    string
-        expected string
-        wantErr  bool
-    }{
-        {
-            name:     "descriptive case name",
-            input:    "value",
-            expected: "result",
-        },
-        {
-            name:    "error case description",
-            input:   "bad",
-            wantErr: true,
-        },
-    }
-
-    for _, tt := range tests {
-        t.Run(tt.name, func(t *testing.T) {
-            result, err := FunctionUnderTest(tt.input)
-            if tt.wantErr {
-                if err == nil {
-                    t.Fatalf("expected error, got nil")
-                }
-                return
-            }
-            if err != nil {
-                t.Fatalf("unexpected error: %v", err)
-            }
-            if result != tt.expected {
-                t.Errorf("got %q, want %q", result, tt.expected)
-            }
-        })
-    }
-}
-```
-
-### Assertions
-- Use `t.Errorf()` for non-fatal assertions (test continues)
-- Use `t.Fatalf()` for fatal assertions (test stops)
-- Always include descriptive messages: `t.Errorf("got %v, want %v", got, want)`
-
-### Mocking
-- Manual mock structs implementing port interfaces
-- Define mocks in the test file, NOT in separate files
-- Example pattern from `viewerTracker_test.go`:
-
-```go
-type mockStorage struct{}
-
-func (m *mockStorage) ReadFile(path string) ([]byte, error)                          { return nil, nil }
-func (m *mockStorage) WriteFile(path string, data []byte) error                      { return nil }
-func (m *mockStorage) DeleteFile(path string) error                                  { return nil }
-func (m *mockStorage) ListFiles(pattern string) ([]string, error)                    { return nil, nil }
-func (m *mockStorage) GetFileSize(path string) (int64, error)                        { return 0, nil }
-func (m *mockStorage) SearchFiles(pattern string, extensions []string) ([]string, []map[string]string, error) {
-    return nil, nil, nil
-}
-```
-
-For mocks that need configurable behavior, use function fields:
-
-```go
-type mockStorageWithBehavior struct {
-    readFileFunc  func(path string) ([]byte, error)
-    writeFileFunc func(path string, data []byte) error
-    // ... other methods
-}
-
-func (m *mockStorageWithBehavior) ReadFile(path string) ([]byte, error) {
-    if m.readFileFunc != nil {
-        return m.readFileFunc(path)
-    }
-    return nil, nil
-}
-```
-
-### Port Interfaces to Mock
-
-**StoragePort** (`src/domain/repositories/storagePort.go`):
-```go
-type StoragePort interface {
-    ReadFile(path string) ([]byte, error)
-    WriteFile(path string, data []byte) error
-    DeleteFile(path string) error
-    ListFiles(pattern string) ([]string, error)
-    GetFileSize(path string) (int64, error)
-    SearchFiles(pattern string, extensions []string) ([]string, []map[string]string, error)
-}
-```
-
-**EncoderPort** (`src/domain/repositories/encoderPort.go`):
-```go
-type EncoderPort interface {
-    EncodeVideo(inputPath string, outputPath string, qualities map[string]models.Quality, distribution models.Distribution) error
-}
-```
-
-**Note:** `models.Distribution` uses pointer fields (`*Hls`, `*Dash`). In tests, construct as:
-```go
-dist := models.Distribution{Hls: &models.Hls{SegmentDuration: 6}}
-dist := models.Distribution{Dash: &models.Dash{SegmentDuration: 6}}
-dist := models.Distribution{Hls: &models.Hls{SegmentDuration: 2}, Dash: &models.Dash{SegmentDuration: 2}} // dual
-```
-
-**ConfigurationPort** (`src/domain/repositories/configurationPort.go`):
-```go
-type ConfigurationPort interface {
-    Load(configPath string) (*models.Application, *models.Server, *map[string]models.Stream, error)
-}
-```
-
-### Helper Constructors
-
-When a struct's `New*()` constructor starts goroutines or has side effects, create a test helper that directly initializes the struct:
-
-```go
-// newTestTracker creates a ViewerTracker without starting the cleanup goroutine.
-func newTestTracker() *ViewerTracker {
-    return &ViewerTracker{
-        streams: make(map[string]*streamTracking),
-        storage: &mockStorage{},
-    }
-}
-```
-
-## Step 3: Write Tests
-
-Priority order:
-1. **Happy path** — Normal expected behavior
-2. **Error cases** — Invalid input, missing data, failed dependencies
-3. **Edge cases** — Empty input, nil values, boundary conditions
-4. **Concurrency** (if applicable) — Race conditions, concurrent access
-
-## Step 4: Run Tests
-
-After writing tests, run them:
+## Step 4: Write, then run
 
 ```bash
-cd src && go test ./... -v -run TestNamePattern
+mvn test -Dtest={ClassName}Test
+mvn test                              # all unit tests
+mvn verify                            # + e2e, needs ffmpeg
 ```
 
-For a specific package:
-```bash
-cd src && go test ./domain/services/ -v -run TestFunctionName
-```
+Writing first: the run must **fail**, and the failure message must be the one the behaviour
+predicts — a compile error or a wrong-reason failure means the test is not pinning anything yet.
+Report that red as the result; do not "fix" it by writing the implementation unasked.
 
-For race detection:
-```bash
-cd src && go test ./... -race
-```
-
-Fix any compilation or test failures before finishing.
+Once implementing: fix every compilation error and failure before finishing. If you touched
+`domain/` or `application/`, also run `mvn test -Dtest=ArchitectureTest`.
