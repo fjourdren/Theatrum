@@ -69,4 +69,24 @@ E2E skips itself when FFmpeg is missing, which would leave a green job that test
 `generate_test_video.sh` sits beside it for regenerating by hand.
 
 The release job ships one artifact (`theatrum-*.jar`); there is no cross-compilation to port from
-the Go pipeline. Still missing versus the Go original: no `Dockerfile`, no `scripts/`.
+the Go pipeline. Still missing versus the Go original: no `scripts/`. Nothing builds the image in
+CI yet — the `Dockerfile` is built by hand.
+
+## Docker
+
+Multi-stage `Dockerfile`: `maven:3.9-eclipse-temurin-25` builds the fat jar (`-DskipTests` — CI
+already ran them, and FFmpeg is absent from the build stage), `eclipse-temurin:25-jre` runs it with
+`ffmpeg` installed from apt.
+
+```bash
+docker build -t theatrum .
+docker run -p 8080:8080 -p 1935:1935 \
+  -v "$PWD/config.yml:/config/config.yml:ro" -v "$PWD/data:/app/data" theatrum
+```
+
+- `WORKDIR /app` is load-bearing: `AppPaths.defaults()` resolves `data/` and `frontend/` against
+  the process working directory, and `frontend/` is copied there.
+- No `config.yml` in the image (it holds `live_stream_key` secrets). The default `CMD` is
+  `--config /config/config.yml`; override it to point elsewhere.
+- `EXPOSE 8080 1935` is documentation — the real ports come from `server:` in the mounted config,
+  so map what that file says.

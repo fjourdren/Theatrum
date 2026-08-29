@@ -19,10 +19,11 @@ FFmpeg required for `mvn verify`, jar name, ports, gitignored `config.yml`).
 ls -d .github/workflows Dockerfile scripts 2>/dev/null || echo "no CI/CD yet"
 ```
 
-`ci.yml` (build + release) and `e2e.yml` are in place — see `docs/operations.md` § CI/CD for what
-each does and why there is no separate test job. Still missing: `Dockerfile`, `scripts/`. The Go
-original (`../theatrum`) has a multi-stage `Dockerfile` and `scripts/local-build.sh` — read them
-before writing the Java equivalents. **Add the piece that was asked for, not all of it
+`ci.yml` (build + release), `e2e.yml` and the multi-stage `Dockerfile` are in place — see
+`docs/operations.md` § CI/CD and § Docker for what each does, why there is no separate test job,
+and why the image must run from `/app`. Still missing: `scripts/`, and nothing builds the image in
+CI. The Go original (`../theatrum`) has `scripts/local-build.sh` — read it before writing the Java
+equivalent. **Add the piece that was asked for, not all of it
 speculatively.**
 
 ## Verify after any change

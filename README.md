@@ -81,6 +81,11 @@ java -jar target/theatrum-2.0.jar --config config.yml
 
 # or, during development
 mvn spring-boot:run
+
+# or with Docker — config.yml and data/ are mounted, never baked into the image
+docker build -t theatrum .
+docker run -p 8080:8080 -p 1935:1935 \
+  -v "$PWD/config.yml:/config/config.yml:ro" -v "$PWD/data:/app/data" theatrum
 ```
 
 `--config` (or `-c`) defaults to `config.yml` in the working directory. `--help` and `--version`
